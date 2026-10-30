@@ -1,8 +1,13 @@
-from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.viewsets import ModelViewSet
+
+from apps.common import ModelActionPermission
+
 from .models import Placement
 from .serializers import PlacementSerializer
-from apps.common import RolePermission
-class PlacementViewSet(viewsets.ModelViewSet):
-    queryset=Placement.objects.select_related("application").all(); serializer_class=PlacementSerializer; permission_classes=[IsAuthenticated,RolePermission]
-    allowed_roles=("ADMIN","MANAGEMENT","HR","TEAM_LEAD")
+
+
+class PlacementViewSet(ModelViewSet):
+    queryset = Placement.objects.select_related("application").all()
+    serializer_class = PlacementSerializer
+    permission_classes = [IsAuthenticated, ModelActionPermission]

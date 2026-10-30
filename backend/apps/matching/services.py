@@ -7,6 +7,9 @@ def run_matching(job,user):
     job_skills=list(job.job_skills.select_related("skill"))
     candidates=Candidate.objects.filter(is_active=True).prefetch_related("candidate_skills__skill")
     results=[]
+    # Phase 4: Django 5.2 raises ValueError when iterator() follows prefetch_related()
+    # without chunk_size. Do not treat this engine as working until that call is fixed
+    # and the unused skill weights/aliases are actually scored.
     for candidate in candidates.iterator():
         candidate_skill_names={cs.skill.normalized_name.lower() for cs in candidate.candidate_skills.all()}
         required={js.skill.normalized_name.lower() for js in job_skills}
