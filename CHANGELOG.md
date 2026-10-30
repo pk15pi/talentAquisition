@@ -2,6 +2,35 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-10-30 — Review follow-up before Phase 3
+
+PR #1 stays open.
+
+### Changed
+
+- Candidate API no longer returns resume `file`, `parsed_text`, or `file_hash`. `current_ctc` and `expected_ctc` require `candidates.view_candidate_compensation` (not granted to HR by default). Django admin hides the same fields without that permission or `candidates.view_resume_content`.
+- `POST /api/v1/jobs/{id}/match/` returns HTTP 503 `matching_unavailable` and does not run the scorer. The jobs screen disables "Find candidates".
+- Login route guard re-reads the access token when the location changes, so a successful sign-in leaves the login page.
+- Frontend image is `node:22-bookworm-slim`. `frontend/docker-entrypoint.sh` installs dependencies when the `node_modules` volume has no Vite binary.
+- `playwright-core` is a devDependency for `frontend/scripts/verify-browser.mjs`.
+
+### Added
+
+- Tests for resume privacy, the five default groups (candidates, JD scope, assignment, interview feedback), and HR placement create returning 403.
+- `.github/workflows/test.yml` runs the Django suite on PostgreSQL 16 and `npm run build`.
+
+### Verified
+
+- `python manage.py test apps`: 40 tests, OK.
+- `sudo docker compose up --build`: db, redis, backend (`/api/v1/health/` 200), worker (`celery ready`), frontend (Vite 200) after the host `FORWARD` chain allowed container traffic.
+- Headless Chrome: consent checkbox blocks save; checking it creates `SW-CAN-00001`; replacing the access token and reloading refreshes it. Screenshots under `/opt/cursor/artifacts/screenshots/`.
+
+### Not changed
+
+- HR still cannot create a placement and still cannot see CTC, fee, or revenue. Left as an open question.
+- Duplicate merge is still not implemented. The required future behavior is recorded in `DEVELOPMENT_STATUS.md` and `apps/candidates/reviews.py`.
+- The matching formula is still Phase 4.
+
 ## 2026-10-30 — Phase 1 foundation and Phase 2 database
 
 Application code, the first migrations, and tests. No Phase 3 admin polish and no Phase 4 matcher fix.

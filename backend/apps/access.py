@@ -116,6 +116,7 @@ MANAGEMENT_PERMS = (
     "jobs.assign_job_owner",
     "jobs.run_match",
     "candidates.view_candidate",
+    "candidates.view_candidate_compensation",
     "candidates.add_candidate",
     "candidates.change_candidate",
     "candidates.review_duplicate",

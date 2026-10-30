@@ -130,7 +130,7 @@ Creating a candidate requires `consent_acknowledged: true` and `privacy_notice_v
 - Commercial defaults live on the client. A JD may override fee type, fee value, and guarantee days.
 - Sourcing and the application recruiter are set by the server from the signed-in user. Status changes go through `change-status`.
 - Resume files are stored locally in development and are not publicly served. Parsing still runs through Celery when a file is uploaded.
-- Candidate matching is not usable yet. `run_matching` raises `ValueError` on Django 5.2 because it calls `iterator()` after `prefetch_related()` without `chunk_size`. Weights and aliases are stored and not scored. That fix is Phase 4.
+- Candidate matching is not usable yet. The API returns HTTP 503 `matching_unavailable` and the jobs screen disables the button. The scorer still crashes on Django 5.2 if called directly (`iterator()` after `prefetch_related()`). Weights and aliases are stored and not scored. That fix is Phase 4.
 
 ## Important before production
 

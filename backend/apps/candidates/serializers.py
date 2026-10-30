@@ -7,11 +7,17 @@ from .models import Candidate, CandidateConsent, CandidateNote, Resume
 from .reviews import queue_identity_duplicate_reviews
 
 
+RESUME_CONTENT_FIELDS = ("file", "parsed_text", "file_hash")
+COMPENSATION_FIELDS = ("current_ctc", "expected_ctc")
+
+
 class ResumeSerializer(serializers.ModelSerializer):
+    """Metadata only. File bytes, storage paths, hashes, and parsed text are not API fields."""
+
     class Meta:
         model = Resume
-        fields = "__all__"
-        read_only_fields = ("id", "uploaded_by", "uploaded_at", "parsing_status")
+        fields = ("id", "original_filename", "version", "is_primary", "parsing_status", "uploaded_at")
+        read_only_fields = fields
 
 
 class CandidateSerializer(serializers.ModelSerializer):
@@ -31,9 +37,23 @@ class CandidateSerializer(serializers.ModelSerializer):
             "consent_withdrawn_at",
             "created_at",
             "updated_at",
+            "current_ctc",
+            "expected_ctc",
         )
 
+    def _can_view_compensation(self):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and user.has_perm("candidates.view_candidate_compensation"))
+
     def validate(self, attrs):
+        if not self._can_view_compensation():
+            leaked = set(attrs) & set(COMPENSATION_FIELDS)
+            if leaked:
+                raise serializers.ValidationError("You do not have permission to set candidate compensation.")
+        return self._validate_consent(attrs)
+
+    def _validate_consent(self, attrs):
         if self.instance is None:
             if not attrs.get("consent_acknowledged"):
                 raise serializers.ValidationError(
@@ -69,6 +89,13 @@ class CandidateSerializer(serializers.ModelSerializer):
         )
         queue_identity_duplicate_reviews(candidate)
         return candidate
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._can_view_compensation():
+            for field in COMPENSATION_FIELDS:
+                data.pop(field, None)
+        return data
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):

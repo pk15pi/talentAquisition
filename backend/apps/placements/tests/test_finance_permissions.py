@@ -32,6 +32,18 @@ class FinancePermissionTests(SynfoAPITestCase):
         self.assertEqual(placement.data["status"], "OFFERED")
         invoices = self.client.get("/api/v1/invoices/")
         self.assertEqual(invoices.status_code, 403)
+        created = self.client.post(
+            "/api/v1/placements/",
+            {
+                "application": str(self.placement.application_id),
+                "offered_ctc": "1000.00",
+                "agreed_fee_type": "FIXED",
+                "agreed_fee_value": "100.00",
+                "expected_revenue": "100.00",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 403)
         report = self.client.get("/api/v1/reports/overview/")
         self.assertEqual(report.status_code, 200)
         self.assertEqual(report.data["invoiced_revenue"], 0)

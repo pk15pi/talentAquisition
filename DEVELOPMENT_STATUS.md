@@ -8,17 +8,29 @@ Updated after Phase 1 (foundation) and Phase 2 (database), 2026-10-30. Phase 3 a
 
 | Command | Result |
 | --- | --- |
-| `python manage.py test apps` against PostgreSQL 16 | 30 tests, OK, 0 failures |
+| `python manage.py test apps` against PostgreSQL 16 | 40 tests, OK, 0 failures |
 | `python manage.py check` | No issues |
 | `python manage.py makemigrations --check --dry-run` | No changes |
 | `python manage.py migrate` on the dev database | Applied |
 | `npm run build` (`tsc -b && vite build`) | Exit 0 |
-| Host `runserver` on 127.0.0.1:8000 and Vite on 127.0.0.1:5173 | Health `200` `{"status":"ok","version":"v1"}`. `/media/resumes/secret.pdf` is `404`. Vite `/login` is `200`. A live superuser create without consent is `400`; with consent it is `201` and `SW-CAN-00001`. |
-| `docker compose up` | Not run. The Docker daemon was not running in this environment. |
-| Browser click-through of the consent form | Not run. The candidate form includes the new fields; the API consent rule is covered by tests. |
+| `sudo docker compose up --build` after `dockerd` (30 Oct 2026) | db healthy, redis up, backend healthy, worker `celery@… ready`, frontend Vite `200`. Evidence below. |
+| Headless Chrome via `frontend/scripts/verify-browser.mjs` | Login, consent checkbox block, save with consent (`SW-CAN-00001`), and access-token refresh all passed. Screenshots below. |
 | Frontend unit tests | None exist. |
 
-The 30 tests cover health and API versioning, the error envelope, inactive login, token refresh, superuser bypass, group bootstrap (including "do not reset edits"), HR having no finance permissions, client scoping and the contact ownership check, commercial-term override, JD visibility and assignment permissions, sales being refused `run_match`, re-apply after rejection, the joined application still holding the active slot, frozen recruiter/status on PATCH, consent, duplicate review without a merge, retention settings, business codes, credit-note numbers, skill-alias uniqueness, interview reschedule history, and sales being refused interview reads.
+## Verification evidence (this follow-up)
+
+Commands and results from this environment:
+
+- `python manage.py test apps` — `Ran 40 tests`, `OK`, 0 failures. Includes resume privacy (API, upload response, `/media/` 404, Django admin), the five-group visibility matrix, HR placement create `403`, and match returning `503` without creating a `MatchRun`.
+- `npm run build` — exit 0 (`tsc -b && vite build`).
+- Docker: `dockerd` was started on the VM. The first daemon start used `--iptables=false`, and container-to-container TCP stayed in `SYN-SENT` because `iptables-legacy` `FORWARD` policy was `DROP`. Restarting `dockerd` with its default iptables setup, then `sudo iptables-legacy -P FORWARD ACCEPT`, let the backend reach Postgres. `sudo docker compose up --build` then produced: backend `Up (healthy)`, db `healthy`, redis up, worker log `celery@… ready` with task `apps.candidates.tasks.parse_resume`, frontend log `VITE v6.4.5 ready` and `curl http://127.0.0.1:5173/login` → `200`. `curl http://127.0.0.1:8000/api/v1/health/` → `200` `{"status":"ok","version":"v1"}`.
+- The first frontend container failed: the anonymous `node_modules` volume hid the image install, and the Alpine image could not load `@rollup/rollup-linux-x64-musl` from a lockfile built on glibc. The frontend image is now `node:22-bookworm-slim` and `frontend/docker-entrypoint.sh` runs `npm ci` when `vite` is missing from that volume. After that rebuild, Vite started.
+- Browser: `node frontend/scripts/verify-browser.mjs` with system Chrome and `playwright-core`, against the Compose URLs, user `hrbrowser` (role HR). Output: `browser verification ok`. An invalid access token received HTTP 401 from `/api/v1/candidates/`; after reload the stored access token was a new JWT and the saved candidate was still on screen.
+- Screenshots: `/opt/cursor/artifacts/screenshots/01-login.png`, `02-dashboard-after-login.png`, `03-candidate-form-consent-visible.png`, `04-consent-required-blocks-submit.png`, `05-candidate-saved-with-consent.png`, `06-page-loaded-after-token-refresh.png`.
+
+A login bug showed up in the browser and is fixed: the route guard read `localStorage` only when `App` rendered, and navigation did not re-render it, so a successful token response left the user on the login page. `App` now subscribes to the location and reads the token again.
+
+The 40 tests cover health and API versioning, the error envelope, inactive login, token refresh, superuser bypass, group bootstrap (including "do not reset edits"), HR having no finance permissions, client scoping and the contact ownership check, commercial-term override, JD visibility and assignment permissions, sales being refused `run_match`, re-apply after rejection, the joined application still holding the active slot, frozen recruiter/status on PATCH, consent, duplicate review without a merge, retention settings, business codes, credit-note numbers, skill-alias uniqueness, interview reschedule history, and sales being refused interview reads.
 
 ---
 
@@ -93,7 +105,7 @@ The 30 tests cover health and API versioning, the error envelope, inactive login
 - **Current implementation status:** Partial. Create/view/assign are permission-based. Assignment writes `JobAssignmentHistory`. JD fee fields override client defaults (tested). `POST …/match/` is still broken.
 - **Completed features:** None. The JD screen can create a row and still calls match, which fails.
 - **Pending features:** Fix matching (Phase 4). Unassign. Assignment UI. Skill capture on the JD form.
-- **Known bugs:** **C1, deferred.** `apps/matching/services.py` calls `queryset.iterator()` after `prefetch_related()` without `chunk_size`. Django 5.2 raises `ValueError` and the match run row is created first. Not changed, because the crash is not in the model layer. Sales receive 403 on match (tested) because they lack `jobs.run_match`. HR has `run_match` and will hit the crash.
+- **Known bugs:** **C1, still deferred as an engine fix.** `apps/matching/services.py` still has the Django 5.2 `iterator()` crash, and nothing calls it. `POST /api/v1/jobs/{id}/match/` returns HTTP 503 `matching_unavailable` and does not insert a `MatchRun` (tested). The jobs screen shows a disabled "Find candidates" button.
 - **Tests executed:** HR cannot see an unassigned JD (404). Team lead can. Assigning HR writes success. Assigning a sales user returns 400. Sales match returns 403. Commercial override unit behavior.
 - **Tests passed:** Yes.
 - **Tests failed:** None. Match success was not tested, on purpose.
@@ -103,11 +115,11 @@ The 30 tests cover health and API versioning, the error envelope, inactive login
 ## 7. Candidates and resumes
 
 - **Module name:** Candidates, resumes, notes, consent
-- **Current implementation status:** Partial. A profile cannot be stored without consent and a privacy-notice version (database check, model `save`, and API). The candidate form sends both. Duplicate email/phone opens a `DuplicateReview` and does not merge. File-hash reviews are queued on upload. Resumes are not publicly served.
+- **Current implementation status:** Partial. A profile cannot be stored without consent and a privacy-notice version. The candidate form sends both, and that was exercised in headless Chrome (screenshots 03–05). Duplicate email/phone opens a `DuplicateReview` and does not merge. Resume file, `parsed_text`, and `file_hash` are not API fields. `current_ctc` and `expected_ctc` are returned only with `candidates.view_candidate_compensation` (management and administrators by default, not HR). Django admin hides those fields, and resume content fields, unless the viewer has the matching permission. `/media/` stays unrouted.
 - **Completed features:** None. There is no download, no review screen, and upload was not retested against a live Celery worker.
-- **Pending features:** Signed download, malware scan, review UI, actual merge, consent withdrawal API.
+- **Pending features:** Signed download, malware scan, review UI, consent withdrawal API. A future merge, not built here, must pick a surviving profile, keep each person's sourcing and consent, relink applications, interviews, and submissions, keep the other row as an audited alias rather than deleting it, record field conflicts, and log actor, time, source, and destination. One person's consent is not consent for the other.
 - **Known bugs:** Phone normalization is still "keep digits", so `+91…` and a national number do not match. Empty email and phone do not open a review (tested). Upload still calls Celery after the row is saved.
-- **Tests executed:** ORM create without consent raises, API without consent is 400, API with consent is 201 and writes `CandidateConsent` plus `SW-CAN-…`, notice-version mismatch is 400, approve leaves both rows and writes an audit row with `records_merged: false`, a user stripped of `review_duplicate` cannot decide.
+- **Tests executed:** The consent and duplicate tests above, plus `test_resume_privacy`: sales 403, HR payload has no resume content or CTC, management sees CTC but not resume content, upload response has no storage path or parsed text, `/media/` 404, staff HR admin HTML omits `parsed_text`, file hash, file input, and CTC. Browser script saved `SW-CAN-00001` only after the consent box was checked.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
 - **Security issues:** Files sit on disk with no public URL and no authorized URL. Anyone with `review_duplicate` (every default role group) may approve a review. That matches the owner's rule. The decision does not merge data.
@@ -171,6 +183,7 @@ The 30 tests cover health and API versioning, the error envelope, inactive login
 - **Current implementation status:** Partial. List is ordered. Commercial fields are removed from the JSON unless the user has `placements.view_placement_financials`. Writes of those fields require `change_placement_financials`. HR has `view_placement` only.
 - **Completed features:** None. No placement screen.
 - **Pending features:** Copy effective client/JD terms into the placement instead of the field default of 90 guarantee days. That 90 is still on the model and is not the retention setting.
+- **Open question for the owner (not changed in this follow-up):** Can HR create a placement? Today the HR Executive group has `placements.view_placement` only. It does not have `placements.add_placement`, `placements.change_placement`, `placements.view_placement_financials`, or `placements.change_placement_financials`. So HR cannot create a placement (POST returns 403, tested) and a placement they can read omits `offered_ctc`, `agreed_fee_type`, `agreed_fee_value`, `expected_revenue`, and `guarantee_period_days`. Invoice list is also 403. A proposed split, if you want HR to record operational placements, is to grant `placements.add_placement` and `placements.change_placement` for status and joining date only, keep the two financial permissions off HR, and make CTC/fee nullable until someone with `change_placement_financials` sets them. That model change is waiting on your answer.
 - **Known bugs:** Expected revenue is still whatever the client sends. HR cannot see the amounts and also cannot create a placement, because create requires the financial permission in the serializer and HR lacks `add_placement`.
 - **Tests executed:** HR detail response omits CTC, fee, and revenue and still shows status. HR invoice list is 403. Management sees `1200000.00` and `100000.00`.
 - **Tests passed:** Yes.

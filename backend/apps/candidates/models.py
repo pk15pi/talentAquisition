@@ -57,6 +57,7 @@ class Candidate(models.Model):
         ]
         permissions = [
             ("review_duplicate", "Can decide a duplicate-candidate review"),
+            ("view_candidate_compensation", "Can view candidate current and expected CTC"),
         ]
 
     def save(self, *args, **kwargs):
@@ -103,6 +104,9 @@ class Resume(models.Model):
             models.UniqueConstraint(fields=["candidate"], condition=Q(is_primary=True), name="one_primary_resume_per_candidate"),
         ]
         indexes = [models.Index(fields=["file_hash"])]
+        permissions = [
+            ("view_resume_content", "Can view resume files, parsed text, and file hashes"),
+        ]
 
 
 class CandidateNote(models.Model):

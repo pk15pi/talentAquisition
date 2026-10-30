@@ -1,3 +1,13 @@
+"""Queue duplicate reviews. This module does not merge profiles.
+
+A later merge, if the owner scopes it, must require an explicit surviving profile,
+keep sourcing attribution and consent provenance on each person, relink applications,
+interviews, submissions, and other foreign keys, retain the other row as an audited
+alias rather than deleting it, record field-level conflicts, and log the actor,
+time, source, and destination. One person's consent is never treated as consent
+for the other person.
+"""
+
 from .models import Candidate, DuplicateReview, Resume
 
 
