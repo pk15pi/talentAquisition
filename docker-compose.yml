@@ -18,13 +18,24 @@ services:
       - "6379:6379"
   backend:
     build: ./backend
-    command: sh -c "python manage.py makemigrations accounts organizations clients sales jobs candidates applications recruitment interviews placements billing matching audit && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    entrypoint: ["sh", "/app/docker-entrypoint.sh"]
+    command: ["web"]
     env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     volumes:
       - ./backend:/app
       - media_data:/app/media
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
@@ -32,14 +43,23 @@ services:
         condition: service_started
   worker:
     build: ./backend
-    command: celery -A config worker -l info
+    entrypoint: ["sh", "/app/docker-entrypoint.sh"]
+    command: ["worker"]
     env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     volumes:
       - ./backend:/app
       - media_data:/app/media
     depends_on:
-      - backend
-      - redis
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_started
   frontend:
     build: ./frontend
     environment:
@@ -50,7 +70,8 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 volumes:
   postgres_data:
   media_data:
