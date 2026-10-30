@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-synfotalent}
+      POSTGRES_USER: ${POSTGRES_USER:-synfotalent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synfotalent_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-synfotalent} -d ${POSTGRES_DB:-synfotalent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  backend:
+    build: ./backend
+    command: sh -c "python manage.py makemigrations accounts organizations clients sales jobs candidates applications recruitment interviews placements billing matching audit && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    env_file: .env
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+  worker:
+    build: ./backend
+    command: celery -A config worker -l info
+    env_file: .env
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+    depends_on:
+      - backend
+      - redis
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+volumes:
+  postgres_data:
+  media_data:
