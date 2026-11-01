@@ -49,7 +49,7 @@ Docker and Docker Compose are required. `.env` is not in git.
    docker compose exec backend python manage.py createsuperuser
    ```
 
-5. Sign in with those credentials. Create other users in Django Admin and set their role. Saving a user puts them in the matching group: Administrator, Management, Sales Executive, HR Executive, or Team Lead. Access is the group's Django permissions, which an administrator can change. Running `bootstrap_groups` again does not reset those edits. Pass `--reset` only when you intend to restore the built-in grants.
+5. Sign in with those credentials. Create other users in Django Admin and set their role. A newly created user is placed in the matching group: Administrator, Management, Sales Executive, HR Executive, or Team Lead. Later saves and logins do not change group membership; add or remove groups on the user form when access should change. Access is the group's Django permissions, which an administrator can change. Running `bootstrap_groups` again does not reset those edits or rewrite memberships. Pass `--reset` only when you intend to restore the built-in grants on the groups themselves.
 
    HR does not receive invoice, payment, or placement-fee permissions. Team leads can see every JD. HR sees a JD after they are assigned, unless someone grants `jobs.view_all_jobs`.
 

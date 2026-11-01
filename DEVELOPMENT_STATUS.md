@@ -8,7 +8,7 @@ Updated after Phase 3 (Django admin), 2026-11-01. Phase 4 and later have not bee
 
 | Command | Result |
 | --- | --- |
-| `python manage.py test apps` against PostgreSQL 16 | 56 tests, OK, 0 failures |
+| `python manage.py test apps` against PostgreSQL 16 | 65 tests, OK, 0 failures |
 | `python manage.py check` | No issues |
 | `python manage.py makemigrations --check --dry-run` | No changes detected |
 | Chrome session on `/admin/` | HR placement is view-only with no fee fields; HR invoice URL is 403; Management sees CTC `880011.22`, revenue `770022.33`, and invoice total `654321.09`. Screenshots and recording below. |
@@ -17,7 +17,7 @@ No migration files were added or edited. The matching scorer was not changed.
 
 ## Phase 3 — Django admin
 
-Staff users in the five `bootstrap_groups` groups see only the models their Django permissions allow. Active superusers bypass those checks because `has_perm` returns true for them. `/admin/` still requires `is_staff`; group membership alone does not open the site. Logging in updates `last_login`, and `User.save` puts the account back into the group for its role. That behavior already existed. A test that needs a staff user with no role group clears the group after login.
+Staff users in the five `bootstrap_groups` groups see only the models their Django permissions allow. Active superusers bypass those checks because `has_perm` returns true for them. `/admin/` still requires `is_staff`; group membership alone does not open the site. A new user is placed in the group for their role only when the account is provisioned. Later saves, logins, and `bootstrap_groups` do not add or remove memberships.
 
 - List pages have `list_display`, `list_filter`, `search_fields`, `ordering`, and `date_hierarchy` where the model has a date.
 - Inlines cover contacts, activities, ownership history, job assignments and their history, job skills, status history, candidate skills, resumes, notes, consent, duplicate reviews, application history, submissions, interview participants and events, invoice lines, payments, and credit notes.
@@ -25,6 +25,8 @@ Staff users in the five `bootstrap_groups` groups see only the models their Djan
 - Resume file, parsed text, and file hash require `candidates.view_resume_content`. Current and expected CTC require `candidates.view_candidate_compensation`. Placement CTC, fee, revenue, and guarantee days require `placements.view_placement_financials` to see and `placements.change_placement_financials` to edit. HR has neither, and HR has no add or change on placements, so the placement page is view-only.
 - Billing models stay behind the billing permissions. Invoices, payments, credit notes, and placements cannot be deleted from the admin. History and audit rows are read-only, including for superusers. Candidates, clients, jobs, users, and skills are deactivated or closed instead of deleted. The five default groups cannot be deleted. Code-sequence counters can be changed only by an active superuser.
 - Saving a client owner, job status, application status, job assignment, interview date, or new candidate from the admin writes the same kind of history the API writes. Approving a duplicate review in the admin calls `decide()` and does not merge or delete profiles.
+- A removed role-group membership stays removed after login, a profile save, and `bootstrap_groups`. Only provisioning (`create_user`, `create_superuser`, the admin add form, and the user API create) adds the default role group, and it never removes other memberships.
+- Admin candidate creation requires a checked consent confirmation or a documented non-consent basis. It does not invent a consent time. `candidates.0003_consent_evidence_optional_timestamp` allows `consent_recorded_at` to be empty for that documented basis and rejects a withdrawal when no consent was recorded.
 
 **Not complete:** there is still no React admin, no signed resume download, and no Phase 4 matcher, billing-total, or transition work. Invoice header totals can still be typed separately from lines. Management is not granted department permissions; only a principal who holds `organizations` model permissions (the Administrator group, by default) can edit departments.
 
@@ -40,7 +42,7 @@ Screenshots: `/opt/cursor/artifacts/screenshots/hr_placement_hides_financials.we
 
 ## Verification evidence (Phase 1–2 follow-up)
 
-Commands and results from that earlier environment. The suite then was 40 tests. The Phase 3 run above is 56 and includes those cases.
+Commands and results from that earlier environment. The suite then was 40 tests. The Phase 3 run above is 65 and includes those cases.
 
 ## Phase 1–2 follow-up detail
 
@@ -78,7 +80,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Current implementation status:** Partial. Permissions and JWT refresh exist on the backend and are tested. The React client stores the refresh token and retries once on 401. That interceptor was not exercised in a browser.
 - **Completed features:** None under the full product rule.
 - **Pending features:** Password reset, self-service password change, token blacklist, a user-admin screen. Groups are editable in Django admin, not in the React app.
-- **Known bugs:** Access tokens last 30 minutes (`SIMPLE_JWT`). The UI still treats a stored access token as a session until a request fails. `bootstrap_groups` assigns the role's group on save; extra groups are kept.
+- **Known bugs:** Access tokens last 30 minutes (`SIMPLE_JWT`). The UI still treats a stored access token as a session until a request fails. Creating a user assigns the role's group once. Later profile saves do not change groups.
 - **Tests executed:** Inactive token 401, refresh 200, `createsuperuser` role `ADMIN`, superuser with role HR can create a client and list invoices, `GET /users/me/`, bootstrap does not restore a removed HR permission.
 - **Tests passed:** All of the above, inside the 30-test run.
 - **Tests failed:** None.
@@ -283,7 +285,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 | One active application | Yes | Create only | Yes | No |
 | Interviews | Yes, sales blocked | No page | Yes | No |
 | Placement and invoice visibility | Yes, including Django admin | No pages | Yes | No |
-| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, 16 admin tests inside the 56 | No |
+| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, admin tests inside the 65 | No |
 | Retention settings | Yes | No page | Yes | No |
 | Matching engine | Crashes (C1) | Button calls it | Alias uniqueness only | No |
 | Submissions, billing workflows, filtered reports | Missing or model-only | No | Little or none | No |

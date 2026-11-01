@@ -18,7 +18,6 @@ from apps.audit.models import AuditLog
 from apps.billing.models import Invoice
 from apps.candidates.models import Candidate, DuplicateReview, Resume
 from apps.interviews.models import Interview
-from apps.jobs.admin import record_job_assignment
 from apps.jobs.models import JobAssignment, JobAssignmentHistory, JobStatusHistory
 from apps.organizations.models import CodeSequence
 from apps.placements.models import Placement
@@ -48,42 +47,63 @@ def staff_client(user):
     return client, fresh
 
 
+def _widget_value(widget, value):
+    inner = widget
+    seen = set()
+    while type(inner).__name__ == "RelatedFieldWidgetWrapper" and id(inner) not in seen:
+        seen.add(id(inner))
+        inner = inner.widget
+    if hasattr(inner, "widgets"):
+        parts = inner.decompress(value) if value not in (None, "") else [None] * len(inner.widgets)
+        rendered = []
+        for part, subwidget in zip(parts, inner.widgets):
+            formatted = subwidget.format_value(part)
+            if isinstance(formatted, (list, tuple)):
+                formatted = formatted[0] if len(formatted) == 1 else ""
+            rendered.append("" if formatted in (None, False) else formatted)
+        return ("split", rendered)
+    formatted = inner.format_value(value)
+    if isinstance(formatted, (list, tuple)):
+        if len(formatted) == 1:
+            formatted = formatted[0]
+        else:
+            return list(formatted)
+    if formatted in (None, False, ""):
+        return None
+    return "on" if formatted is True else formatted
+
+
+def _store_field(data, key, field, value):
+    rendered = _widget_value(field.widget, value)
+    if isinstance(rendered, tuple) and rendered[0] == "split":
+        for index, part in enumerate(rendered[1]):
+            data[f"{key}_{index}"] = part
+        return
+    if isinstance(rendered, list):
+        data[key] = rendered
+        return
+    if rendered is not None:
+        data[key] = rendered
+
+
 def admin_form_payload(model_admin, user, obj):
     request = RequestFactory().get("/admin/")
     request.user = user
     form_class = model_admin.get_form(request, obj, change=obj is not None)
-    form = form_class(instance=obj)
+    form = form_class(instance=obj) if obj is not None else form_class()
     data = {}
     for name, field in form.fields.items():
-        value = form[name].value()
-        if isinstance(value, (list, tuple)):
-            data[name] = [str(item) for item in value]
-            continue
-        formatted = field.widget.format_value(value)
-        if formatted in (None, False, ""):
-            continue
-        data[name] = "on" if formatted is True else formatted
-    if obj is not None:
-        formsets, _inlines = model_admin._create_formsets(request, obj, change=True)
-        for formset in formsets:
-            management = formset.management_form
-            for name in management.fields:
-                value = management[name].value()
-                data[f"{formset.prefix}-{name}"] = "" if value is None else str(value)
-            for index, inline_form in enumerate(formset.initial_forms):
-                for name, field in inline_form.fields.items():
-                    value = inline_form[name].value()
-                    if isinstance(value, (list, tuple)):
-                        data[f"{formset.prefix}-{index}-{name}"] = [str(item) for item in value]
-                        continue
-                    formatted = field.widget.format_value(value)
-                    key = f"{formset.prefix}-{index}-{name}"
-                    if formatted in (None, False):
-                        data[key] = ""
-                    elif formatted is True:
-                        data[key] = "on"
-                    else:
-                        data[key] = "" if formatted is None else formatted
+        _store_field(data, name, field, form[name].value())
+    target = obj if obj is not None else model_admin.model()
+    formsets, _inlines = model_admin._create_formsets(request, target, change=obj is not None)
+    for formset in formsets:
+        management = formset.management_form
+        for name in management.fields:
+            value = management[name].value()
+            data[f"{formset.prefix}-{name}"] = "" if value is None else str(value)
+        for index, inline_form in enumerate(formset.initial_forms):
+            for name, field in inline_form.fields.items():
+                _store_field(data, f"{formset.prefix}-{index}-{name}", field, inline_form[name].value())
     data["_save"] = "Save"
     return data
 
@@ -476,61 +496,86 @@ class AdminPermissionTests(SynfoAPITestCase):
         self.assertFalse(log.details["records_merged"])
         self.assertEqual(sales.get(f"/admin/candidates/duplicatereview/{review.pk}/delete/").status_code, 403)
 
-    def test_admin_saves_keep_history_and_do_not_merge_duplicates(self):
-        request = RequestFactory().post("/admin/")
-        request.user = self.sales
+    def test_admin_history_is_written_from_submitted_forms(self):
+        management, management_user = staff_client(self.management)
         client_admin = admin.site._registry[type(self.own_client)]
-        self.own_client.sales_owner = self.sales_two
-        client_admin.save_model(request, self.own_client, None, change=True)
-        self.own_client.refresh_from_db()
-        self.assertEqual(self.own_client.sales_owner_id, self.sales.id)
-        request.user = self.management
-        self.own_client.sales_owner = self.sales_two
-        client_admin.save_model(request, self.own_client, None, change=True)
+        payload = admin_form_payload(client_admin, management_user, self.own_client)
+        payload["sales_owner"] = str(self.sales_two.pk)
+        response = management.post(f"/admin/clients/client/{self.own_client.pk}/change/", payload)
+        self.assertEqual(response.status_code, 302, response.content[:1000])
         self.own_client.refresh_from_db()
         self.assertEqual(self.own_client.sales_owner_id, self.sales_two.id)
-        self.assertTrue(self.own_client.ownership_history.filter(new_owner=self.sales_two).exists())
+        self.assertTrue(
+            self.own_client.ownership_history.filter(new_owner=self.sales_two, changed_by=self.management).exists()
+        )
 
-        request.user = self.lead
+        lead, lead_user = staff_client(self.lead)
         job_admin = admin.site._registry[type(self.own_job)]
-        self.own_job.status = "CLOSED"
-        job_admin.save_model(request, self.own_job, None, change=True)
-        self.assertTrue(JobStatusHistory.objects.filter(job=self.own_job, old_status="OPEN", new_status="CLOSED").exists())
-        assignment = JobAssignment(job=self.own_job, recruiter=self.hr, is_active=True)
-        record_job_assignment(request, assignment)
-        self.assertTrue(JobAssignmentHistory.objects.filter(job=self.own_job, action="ASSIGNED", recruiter=self.hr).exists())
-        assignment.is_active = False
-        record_job_assignment(request, assignment)
-        self.assertTrue(JobAssignmentHistory.objects.filter(job=self.own_job, action="UNASSIGNED", recruiter=self.hr).exists())
-        self.assertTrue(JobAssignment.objects.filter(pk=assignment.pk, is_active=False).exists())
+        job_payload = admin_form_payload(job_admin, lead_user, self.own_job)
+        job_payload["status"] = "CLOSED"
+        response = lead.post(f"/admin/jobs/job/{self.own_job.pk}/change/", job_payload)
+        self.assertEqual(response.status_code, 302, response.content[:1000])
+        self.assertTrue(
+            JobStatusHistory.objects.filter(
+                job=self.own_job, old_status="OPEN", new_status="CLOSED", changed_by=self.lead
+            ).exists()
+        )
 
-        request.user = self.hr
+        assign_payload = admin_form_payload(job_admin, lead_user, self.own_job)
+        prefix = "assignments"
+        assign_payload[f"{prefix}-TOTAL_FORMS"] = "1"
+        assign_payload[f"{prefix}-INITIAL_FORMS"] = "0"
+        assign_payload[f"{prefix}-0-recruiter"] = str(self.hr.pk)
+        assign_payload[f"{prefix}-0-is_active"] = "on"
+        assign_payload[f"{prefix}-0-id"] = ""
+        response = lead.post(f"/admin/jobs/job/{self.own_job.pk}/change/", assign_payload)
+        self.assertEqual(response.status_code, 302, response.content[:1200])
+        assignment = JobAssignment.objects.get(job=self.own_job, recruiter=self.hr)
+        self.assertTrue(
+            JobAssignmentHistory.objects.filter(
+                job=self.own_job, recruiter=self.hr, action="ASSIGNED", changed_by=self.lead
+            ).exists()
+        )
+        remove_payload = admin_form_payload(job_admin, lead_user, self.own_job)
+        remove_payload[f"{prefix}-0-is_active"] = ""
+        response = lead.post(f"/admin/jobs/job/{self.own_job.pk}/change/", remove_payload)
+        self.assertEqual(response.status_code, 302, response.content[:1200])
+        assignment.refresh_from_db()
+        self.assertFalse(assignment.is_active)
+        self.assertTrue(
+            JobAssignmentHistory.objects.filter(
+                job=self.own_job, recruiter=self.hr, action="UNASSIGNED", changed_by=self.lead
+            ).exists()
+        )
+
+        hr, hr_user = staff_client(self.hr)
         application_admin = admin.site._registry[Application]
-        self.application.status = "SUBMITTED"
-        self.application.recruiter = self.lead
-        application_admin.save_model(request, self.application, None, change=True)
+        application_payload = admin_form_payload(application_admin, hr_user, self.application)
+        application_payload["status"] = "SUBMITTED"
+        application_payload["recruiter"] = str(self.lead.pk)
+        response = hr.post(f"/admin/applications/application/{self.application.pk}/change/", application_payload)
+        self.assertEqual(response.status_code, 302, response.content[:1000])
         self.application.refresh_from_db()
         self.assertEqual(self.application.status, "SUBMITTED")
         self.assertEqual(self.application.recruiter_id, self.hr.id)
         self.assertTrue(
-            ApplicationHistory.objects.filter(application=self.application, old_status="IDENTIFIED", new_status="SUBMITTED").exists()
+            ApplicationHistory.objects.filter(
+                application=self.application,
+                old_status="IDENTIFIED",
+                new_status="SUBMITTED",
+                changed_by=self.hr,
+            ).exists()
         )
 
         interview_admin = admin.site._registry[Interview]
-        self.interview.interview_date = self.interview.interview_date + timedelta(days=2)
-        interview_admin.save_model(request, self.interview, None, change=True)
-        self.assertEqual(self.interview.events.filter(event_type="RESCHEDULED").count(), 1)
-
-        duplicate = Candidate(
-            full_name="Admin Dup",
-            email="phase3@example.com",
-            phone="9000003333",
-            privacy_notice_version="notice-1",
-        )
-        admin.site._registry[Candidate].save_model(request, duplicate, None, change=False)
-        self.assertEqual(Candidate.objects.filter(normalized_email="phase3@example.com").count(), 2)
-        self.assertTrue(DuplicateReview.objects.filter(candidate=duplicate, match_type="EMAIL").exists())
-        self.assertTrue(duplicate.consents.filter(source="admin", privacy_notice_version="notice-1").exists())
+        interview_payload = admin_form_payload(interview_admin, hr_user, self.interview)
+        later = self.interview.interview_date + timedelta(days=2)
+        interview_payload["interview_date_0"] = later.date().isoformat()
+        interview_payload["interview_date_1"] = later.time().strftime("%H:%M:%S")
+        response = hr.post(f"/admin/interviews/interview/{self.interview.pk}/change/", interview_payload)
+        self.assertEqual(response.status_code, 302, response.content[:1000])
+        rescheduled = self.interview.events.filter(event_type="RESCHEDULED", changed_by=self.hr)
+        self.assertEqual(rescheduled.count(), 1)
 
     def test_client_and_job_lists_accept_search_and_date_filters(self):
         sales, _user = staff_client(self.sales)

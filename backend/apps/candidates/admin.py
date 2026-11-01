@@ -1,5 +1,6 @@
+from django import forms
 from django.contrib import admin
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 
 from apps.admin_access import (
@@ -11,7 +12,9 @@ from apps.admin_access import (
     perm,
     strip_fieldsets,
 )
+from apps.candidates.models import NON_CONSENT_BASES
 from apps.matching.models import CandidateSkill
+from apps.organizations.models import SystemConfiguration
 
 from .models import Candidate, CandidateConsent, CandidateNote, DuplicateReview, Resume
 from .reviews import queue_identity_duplicate_reviews
@@ -88,6 +91,69 @@ class DuplicateReviewInline(HistoryInlineMixin, admin.TabularInline):
     show_change_link = True
 
 
+class CandidateAdminForm(forms.ModelForm):
+    """Creating a profile requires consent evidence or a written non-consent basis.
+
+    The admin does not invent a consent time. Consent confirmation records the
+    time of that confirmation. Another basis is stored on CandidateConsent and
+    leaves consent_recorded_at empty.
+    """
+
+    processing_basis = forms.ChoiceField(
+        choices=(("consent", "Consent"),) + tuple((basis, basis.replace("_", " ").title()) for basis in NON_CONSENT_BASES),
+        initial="consent",
+        required=False,
+    )
+    consent_confirmed = forms.BooleanField(
+        required=False,
+        label="Consent confirmed",
+        help_text="Check this only after the candidate has agreed to the privacy notice version. The stored time is the time of this confirmation.",
+    )
+    basis_documentation = forms.CharField(
+        required=False,
+        widget=forms.Textarea,
+        label="Basis documentation",
+        help_text="Required for a basis other than consent. Record the source and why this profile may be stored. This is not a consent timestamp.",
+    )
+
+    class Meta:
+        model = Candidate
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance._state.adding:
+            for name in ("processing_basis", "consent_confirmed", "basis_documentation"):
+                self.fields.pop(name, None)
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.instance._state.adding:
+            return cleaned
+        basis = cleaned.get("processing_basis") or "consent"
+        version = (cleaned.get("privacy_notice_version") or "").strip()
+        if not version:
+            self.add_error("privacy_notice_version", "Record the privacy notice version.")
+        config = SystemConfiguration.objects.first()
+        if config and config.privacy_notice_version and version and version != config.privacy_notice_version:
+            self.add_error("privacy_notice_version", "Consent must match the current privacy notice version.")
+        if basis == "consent":
+            if not cleaned.get("consent_confirmed"):
+                self.add_error(
+                    "consent_confirmed",
+                    "Confirm that the candidate consented, or choose a documented processing basis.",
+                )
+        else:
+            note = (cleaned.get("basis_documentation") or "").strip()
+            if len(note) < 10:
+                self.add_error("basis_documentation", "Document the processing basis before storing this profile.")
+            if cleaned.get("consent_confirmed"):
+                self.add_error("consent_confirmed", "Do not mark consent when the basis is not consent.")
+        cleaned["processing_basis"] = basis
+        cleaned["privacy_notice_version"] = version
+        return cleaned
+
+
 @admin.register(Candidate)
 class CandidateAdmin(SensitiveModelAdmin):
     sensitive_field_rules = (("candidates.view_candidate_compensation", COMPENSATION_FIELDS),)
@@ -107,6 +173,7 @@ class CandidateAdmin(SensitiveModelAdmin):
         "updated_at",
     )
     inlines = (CandidateSkillInline, ResumeInline, CandidateNoteInline, CandidateConsentInline, DuplicateReviewInline)
+    form = CandidateAdminForm
     fields = (
         "candidate_code",
         "full_name",
@@ -129,6 +196,18 @@ class CandidateAdmin(SensitiveModelAdmin):
         "created_at",
         "updated_at",
     )
+
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        if obj is None:
+            extras = ["processing_basis", "consent_confirmed", "basis_documentation"]
+            if "privacy_notice_version" in fields:
+                index = fields.index("privacy_notice_version")
+                for offset, name in enumerate(extras):
+                    fields.insert(index + offset, name)
+            else:
+                fields.extend(extras)
+        return fields
 
     def get_readonly_fields(self, request, obj=None):
         readonly = list(super().get_readonly_fields(request, obj))
@@ -156,18 +235,31 @@ class CandidateAdmin(SensitiveModelAdmin):
 
     def save_model(self, request, obj, form, change):
         creating = not change
+        basis = None
+        documentation = ""
         if creating:
+            if form is None or not getattr(form, "cleaned_data", None):
+                raise ValidationError(
+                    "Admin creation requires an explicit consent confirmation or a documented processing basis."
+                )
+            basis = form.cleaned_data.get("processing_basis") or "consent"
+            documentation = (form.cleaned_data.get("basis_documentation") or "").strip()
+            if basis == "consent":
+                if not form.cleaned_data.get("consent_confirmed"):
+                    raise ValidationError("Consent was not confirmed.")
+                obj.consent_recorded_at = timezone.now()
+            else:
+                obj.consent_recorded_at = None
+                obj._documented_processing_basis = basis
             if not obj.sourced_by_id:
                 obj.sourced_by = request.user
-            if not obj.consent_recorded_at:
-                obj.consent_recorded_at = timezone.now()
         super().save_model(request, obj, form, change)
         if creating:
             CandidateConsent.objects.create(
                 candidate=obj,
-                purpose="recruitment",
+                purpose=documentation or "recruitment",
                 source="admin",
-                processing_basis="consent",
+                processing_basis=basis,
                 privacy_notice_version=obj.privacy_notice_version,
                 recorded_by=request.user,
             )

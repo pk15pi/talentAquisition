@@ -60,9 +60,4 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f"left existing group {name} unchanged")
 
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-        for user in User.objects.all().iterator():
-            user.sync_role_group()
         self.stdout.write(self.style.SUCCESS("Groups are ready."))
