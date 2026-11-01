@@ -1,23 +1,48 @@
 # SynfoTalent development status
 
-Updated after Phase 1 (foundation) and Phase 2 (database), 2026-10-30. Phase 3 and later have not been started.
+Updated after Phase 3 (Django admin), 2026-11-01. Phase 4 and later have not been started.
 
-**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Foundation and schema work can be in place without the feature being complete.
+**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Foundation and schema work can be in place without the feature being complete. Phase 3 is an operator admin, not a React feature, so the product modules below stay incomplete under that rule even though the admin behavior is tested.
 
-**Tests that ran**
+**Tests that ran (Phase 3, 2026-11-01)**
 
 | Command | Result |
 | --- | --- |
-| `python manage.py test apps` against PostgreSQL 16 | 40 tests, OK, 0 failures |
+| `python manage.py test apps` against PostgreSQL 16 | 56 tests, OK, 0 failures |
 | `python manage.py check` | No issues |
-| `python manage.py makemigrations --check --dry-run` | No changes |
-| `python manage.py migrate` on the dev database | Applied |
-| `npm run build` (`tsc -b && vite build`) | Exit 0 |
-| `sudo docker compose up --build` after `dockerd` (30 Oct 2026) | db healthy, redis up, backend healthy, worker `celery@… ready`, frontend Vite `200`. Evidence below. |
-| Headless Chrome via `frontend/scripts/verify-browser.mjs` | Login, consent checkbox block, save with consent (`SW-CAN-00001`), and access-token refresh all passed. Screenshots below. |
-| Frontend unit tests | None exist. |
+| `python manage.py makemigrations --check --dry-run` | No changes detected |
+| Chrome session on `/admin/` | HR placement is view-only with no fee fields; HR invoice URL is 403; Management sees CTC `880011.22`, revenue `770022.33`, and invoice total `654321.09`. Screenshots and recording below. |
 
-## Verification evidence (this follow-up)
+No migration files were added or edited. The matching scorer was not changed.
+
+## Phase 3 — Django admin
+
+Staff users in the five `bootstrap_groups` groups see only the models their Django permissions allow. Active superusers bypass those checks because `has_perm` returns true for them. `/admin/` still requires `is_staff`; group membership alone does not open the site. Logging in updates `last_login`, and `User.save` puts the account back into the group for its role. That behavior already existed. A test that needs a staff user with no role group clears the group after login.
+
+- List pages have `list_display`, `list_filter`, `search_fields`, `ordering`, and `date_hierarchy` where the model has a date.
+- Inlines cover contacts, activities, ownership history, job assignments and their history, job skills, status history, candidate skills, resumes, notes, consent, duplicate reviews, application history, submissions, interview participants and events, invoice lines, payments, and credit notes.
+- Sales, job, application, interview, and opportunity querysets use the same visibility helpers as the API.
+- Resume file, parsed text, and file hash require `candidates.view_resume_content`. Current and expected CTC require `candidates.view_candidate_compensation`. Placement CTC, fee, revenue, and guarantee days require `placements.view_placement_financials` to see and `placements.change_placement_financials` to edit. HR has neither, and HR has no add or change on placements, so the placement page is view-only.
+- Billing models stay behind the billing permissions. Invoices, payments, credit notes, and placements cannot be deleted from the admin. History and audit rows are read-only, including for superusers. Candidates, clients, jobs, users, and skills are deactivated or closed instead of deleted. The five default groups cannot be deleted. Code-sequence counters can be changed only by an active superuser.
+- Saving a client owner, job status, application status, job assignment, interview date, or new candidate from the admin writes the same kind of history the API writes. Approving a duplicate review in the admin calls `decide()` and does not merge or delete profiles.
+
+**Not complete:** there is still no React admin, no signed resume download, and no Phase 4 matcher, billing-total, or transition work. Invoice header totals can still be typed separately from lines. Management is not granted department permissions; only a principal who holds `organizations` model permissions (the Administrator group, by default) can edit departments.
+
+## Verification evidence (Phase 3 browser)
+
+Chrome against `runserver` on PostgreSQL, users `hrstaff` (HR Executive, staff) and `mgmtstaff` (Management, staff):
+
+- HR placement page title is "View placement", status Offered, fields are application, status, joining date, and created at, and the only action is Close.
+- `GET /admin/billing/invoice/` as that HR user is 403 Forbidden.
+- Management sees Offered CTC `880011.22`, expected revenue `770022.33`, and invoice total `654321.09`, and can open Billing.
+
+Screenshots: `/opt/cursor/artifacts/screenshots/hr_placement_hides_financials.webp`, `hr_invoice_forbidden.webp`, `management_placement_shows_financials.webp`, `management_invoice_visible.webp`. Recording: `/opt/cursor/artifacts/phase3_admin_hr_and_management_permissions.mp4`.
+
+## Verification evidence (Phase 1–2 follow-up)
+
+Commands and results from that earlier environment. The suite then was 40 tests. The Phase 3 run above is 56 and includes those cases.
+
+## Phase 1–2 follow-up detail
 
 Commands and results from this environment:
 
@@ -115,7 +140,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 7. Candidates and resumes
 
 - **Module name:** Candidates, resumes, notes, consent
-- **Current implementation status:** Partial. A profile cannot be stored without consent and a privacy-notice version. The candidate form sends both, and that was exercised in headless Chrome (screenshots 03–05). Duplicate email/phone opens a `DuplicateReview` and does not merge. Resume file, `parsed_text`, and `file_hash` are not API fields. `current_ctc` and `expected_ctc` are returned only with `candidates.view_candidate_compensation` (management and administrators by default, not HR). Django admin hides those fields, and resume content fields, unless the viewer has the matching permission. `/media/` stays unrouted.
+- **Current implementation status:** Partial. A profile cannot be stored without consent and a privacy-notice version. The candidate form sends both, and that was exercised in headless Chrome (screenshots 03–05). Duplicate email/phone opens a `DuplicateReview` and does not merge. Resume file, `parsed_text`, and `file_hash` are not API fields. `current_ctc` and `expected_ctc` are returned only with `candidates.view_candidate_compensation` (management and administrators by default, not HR). Django admin hides those fields, and resume content fields, unless the viewer has the matching permission. The Phase 3 admin also hides them on the candidate page, the resume inline, and the changelist. `/media/` stays unrouted. Approving a duplicate review from the admin calls `decide()` and does not merge.
 - **Completed features:** None. There is no download, no review screen, and upload was not retested against a live Celery worker.
 - **Pending features:** Signed download, malware scan, review UI, consent withdrawal API. A future merge, not built here, must pick a surviving profile, keep each person's sourcing and consent, relink applications, interviews, and submissions, keep the other row as an audited alias rather than deleting it, record field conflicts, and log actor, time, source, and destination. One person's consent is not consent for the other.
 - **Known bugs:** Phone normalization is still "keep digits", so `+91…` and a national number do not match. Empty email and phone do not open a review (tested). Upload still calls Celery after the row is saved.
@@ -180,7 +205,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 12. Placements
 
 - **Module name:** Placements
-- **Current implementation status:** Partial. List is ordered. Commercial fields are removed from the JSON unless the user has `placements.view_placement_financials`. Writes of those fields require `change_placement_financials`. HR has `view_placement` only.
+- **Current implementation status:** Partial. List is ordered. Commercial fields are removed from the JSON unless the user has `placements.view_placement_financials`. Writes of those fields require `change_placement_financials`. HR has `view_placement` only. In the admin, HR opens the placement as a view-only page with no CTC, fee, revenue, or guarantee fields. Creating a placement in the admin also requires `change_placement_financials`, because those columns are required on the model. Placements are not deleted from the admin.
 - **Completed features:** None. No placement screen.
 - **Pending features:** Copy effective client/JD terms into the placement instead of the field default of 90 guarantee days. That 90 is still on the model and is not the retention setting.
 - **Open question for the owner (not changed in this follow-up):** Can HR create a placement? Today the HR Executive group has `placements.view_placement` only. It does not have `placements.add_placement`, `placements.change_placement`, `placements.view_placement_financials`, or `placements.change_placement_financials`. So HR cannot create a placement (POST returns 403, tested) and a placement they can read omits `offered_ctc`, `agreed_fee_type`, `agreed_fee_value`, `expected_revenue`, and `guarantee_period_days`. Invoice list is also 403. A proposed split, if you want HR to record operational placements, is to grant `placements.add_placement` and `placements.change_placement` for status and joining date only, keep the two financial permissions off HR, and make CTC/fee nullable until someone with `change_placement_financials` sets them. That model change is waiting on your answer.
@@ -194,7 +219,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 13. Billing
 
 - **Module name:** Billing
-- **Current implementation status:** Partial. Invoice, line, payment, and credit-note rows use the permission tables. HR is 403 on invoices. A credit note number is sequenced (`SW-CN-{year}-`). Header totals must be non-negative. There is still no credit-note API and no billing UI.
+- **Current implementation status:** Partial. Invoice, line, payment, and credit-note rows use the permission tables. HR is 403 on invoices in the API and in the admin. A credit note number is sequenced (`SW-CN-{year}-`). Header totals must be non-negative. There is still no credit-note API and no billing UI. Admin can record lines, payments, and credit notes for someone who holds the billing permissions, and it cannot delete those rows. Header totals can still disagree with lines.
 - **Completed features:** None.
 - **Pending features:** Credit-note endpoints, deriving totals only from lines, payment/credit races, tax configuration.
 - **Known bugs:** Header totals can still disagree with lines (no new test). Payment status still ignores credit notes. Those stayed out of Phase 2 on purpose.
@@ -220,7 +245,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 15. Audit, privacy, and consent
 
 - **Module name:** Audit and privacy
-- **Current implementation status:** Partial. Consent is required to store a candidate. Retention is a nullable admin setting. Duplicate decisions write `AuditLog`. Most other actions still do not.
+- **Current implementation status:** Partial. Consent is required to store a candidate. Retention is a nullable admin setting. Duplicate decisions write `AuditLog`, including a decision made from the admin action. Audit rows are read-only in the admin, including for superusers. Most other actions still do not write an audit row.
 - **Completed features:** None.
 - **Pending features:** Audit of reads and billing. Consent withdrawal. Retention deletion. Privacy-notice screen.
 - **Known bugs:** Audit coverage is only the duplicate decision path.
@@ -257,7 +282,8 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 | Consent and duplicate review | Yes | Consent fields on the form | API and model yes; browser no | No |
 | One active application | Yes | Create only | Yes | No |
 | Interviews | Yes, sales blocked | No page | Yes | No |
-| Placement and invoice visibility | Yes | No pages | Yes | No |
+| Placement and invoice visibility | Yes, including Django admin | No pages | Yes | No |
+| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, 16 admin tests inside the 56 | No |
 | Retention settings | Yes | No page | Yes | No |
 | Matching engine | Crashes (C1) | Button calls it | Alias uniqueness only | No |
 | Submissions, billing workflows, filtered reports | Missing or model-only | No | Little or none | No |

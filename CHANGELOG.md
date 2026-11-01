@@ -2,6 +2,38 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-01 — Phase 3 Django admin
+
+Admin only. No Phase 4 matcher work, no Phase 5 pages, no duplicate merge, and no retention deletion. No migration files were added or edited.
+
+### Added
+
+- List display, filters, search, ordering, and date hierarchy on the core admins: accounts, organizations, clients, sales, jobs, candidates, matching, applications, interviews, placements, billing, recruitment submissions, and audit.
+- Inlines for contacts, activities, ownership history, assignments, skills, status history, resumes, notes, consent, duplicate reviews, application history, submissions, interview participants and events, invoice lines, payments, and credit notes.
+- Admin querysets for clients, jobs, applications, interviews, and opportunities use the same visibility helpers as the API.
+- `apps/accounts/tests/test_admin_permissions.py` covers group access, a direct permission grant, superuser bypass, object scope, resume and compensation visibility, HR placement view-only, billing denial, immutable history and finance rows, code sequences, protected groups, and duplicate-review approval without a merge.
+
+### Changed
+
+- Resume file, parsed text, and file hash stay off the admin form without `candidates.view_resume_content`. Candidate CTC stays off without `candidates.view_candidate_compensation`. Placement CTC, fee, revenue, and guarantee days stay off without `placements.view_placement_financials`, and they are read-only without `placements.change_placement_financials`.
+- HR still has `placements.view_placement` only, so the placement admin page is view-only and has no financial fields. Adding a placement in the admin also requires `change_placement_financials`.
+- History, audit, invoices, payments, credit notes, and placements cannot be deleted in the admin, including by an active superuser. Candidates, clients, jobs, users, and skills are retired with status or `is_active`. The five default groups cannot be deleted. Only an active superuser can edit a `CodeSequence` counter. A non-superuser cannot grant `is_superuser` from the user form.
+- Admin saves of client owner, job status, application status, recruiter assignment, and interview date write the existing history rows. A new candidate saved in the admin records consent and queues a duplicate review without merging.
+
+### Verified
+
+- `python manage.py test apps`: 56 tests, OK, PostgreSQL 16.
+- `python manage.py check`: no issues.
+- `python manage.py makemigrations --check --dry-run`: no changes.
+- Chrome: HR staff sees a view-only placement with no fee fields and receives 403 on `/admin/billing/invoice/`. Management sees offered CTC `880011.22`, expected revenue `770022.33`, and invoice total `654321.09`.
+
+### Not changed
+
+- The matching formula and `POST /jobs/{id}/match/` still return 503.
+- Duplicate approval still does not merge profiles.
+- Retention values are stored and not enforced.
+- API permission checks are unchanged. HR still cannot create a placement through the API.
+
 ## 2026-10-30 — Review follow-up before Phase 3
 
 PR #1 stays open.

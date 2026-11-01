@@ -2,6 +2,10 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+admin.site.site_header = "SynfoTalent"
+admin.site.site_title = "SynfoTalent admin"
+admin.site.index_title = "Recruitment operations"
+
 from apps.reports.views import HRReportView, OverviewReportView, SalesReportView
 from config.views import HealthView
 
