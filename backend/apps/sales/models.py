@@ -10,3 +10,5 @@ class SalesOpportunity(models.Model):
     expected_value=models.DecimalField(max_digits=12,decimal_places=2,null=True,blank=True)
     next_follow_up=models.DateTimeField(null=True,blank=True); notes=models.TextField(blank=True)
     created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        permissions = [("view_all_salesopportunity", "Can view all sales opportunities")]

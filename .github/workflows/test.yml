@@ -1,0 +1,54 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: synfotalent
+          POSTGRES_USER: synfotalent
+          POSTGRES_PASSWORD: synfotalent_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U synfotalent -d synfotalent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Django tests
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: test-suite-secret-key-must-be-long-enough-for-hmac-sha256-0123456789
+          DJANGO_DEBUG: "0"
+          POSTGRES_DB: synfotalent
+          POSTGRES_USER: synfotalent
+          POSTGRES_PASSWORD: synfotalent_dev_password
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+        run: python manage.py test apps
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm ci && npm run build
