@@ -1,5 +1,4 @@
 from django.db import IntegrityError, transaction
-from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +10,7 @@ from apps.common import ModelActionPermission
 
 from .models import Application, ApplicationHistory
 from .serializers import ApplicationSerializer
+from .services import IllegalStatusTransition, change_application_status
 
 
 class ApplicationViewSet(ModelViewSet):
@@ -20,7 +20,12 @@ class ApplicationViewSet(ModelViewSet):
     action_permissions = {"change_status": "applications.change_application"}
 
     def get_queryset(self):
-        return visible_applications(self.request.user).select_related("candidate", "job", "recruiter").order_by("-created_at")
+        return (
+            visible_applications(self.request.user)
+            .select_related("candidate", "job", "recruiter", "sourced_by")
+            .prefetch_related("history__changed_by")
+            .order_by("-created_at")
+        )
 
     def perform_create(self, serializer):
         try:
@@ -50,26 +55,17 @@ class ApplicationViewSet(ModelViewSet):
         valid = {value for value, _label in Application.Status.choices}
         if new not in valid:
             return Response({"detail": "Invalid status", "code": "invalid", "errors": None}, status=400)
-        old = app.status
         try:
-            with transaction.atomic():
-                app.status = new
-                if new == "CONTACTED" and not app.contacted_at:
-                    app.contacted_at = timezone.now()
-                if new == "SUBMITTED":
-                    app.submitted_at = timezone.now()
-                if new == "SELECTED":
-                    app.selected_at = timezone.now()
-                if new == "JOINED":
-                    app.joined_at = timezone.now()
-                app.save()
-                ApplicationHistory.objects.create(
-                    application=app,
-                    old_status=old,
-                    new_status=new,
-                    changed_by=request.user,
-                    remarks=request.data.get("remarks", ""),
-                )
+            change_application_status(app, new, request.user, remarks=request.data.get("remarks", ""))
+        except IllegalStatusTransition as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "invalid_transition",
+                    "errors": {"allowed_statuses": list(exc.allowed)},
+                },
+                status=400,
+            )
         except IntegrityError as exc:
             raise ValidationError(
                 {"detail": "Another active application already exists for this candidate and job."}

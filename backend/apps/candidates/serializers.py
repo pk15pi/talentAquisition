@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from apps.organizations.models import SystemConfiguration
 
-from .models import Candidate, CandidateConsent, CandidateNote, Resume
+from .models import Candidate, CandidateConsent, CandidateNote, DuplicateReview, Resume
 from .reviews import queue_identity_duplicate_reviews
 
 
@@ -96,6 +96,32 @@ class CandidateSerializer(serializers.ModelSerializer):
             for field in COMPENSATION_FIELDS:
                 data.pop(field, None)
         return data
+
+
+class DuplicateCandidateSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Candidate
+        fields = ("id", "candidate_code", "full_name")
+
+
+class DuplicateReviewSerializer(serializers.ModelSerializer):
+    candidate = DuplicateCandidateSummarySerializer(read_only=True)
+    matched_candidate = DuplicateCandidateSummarySerializer(read_only=True)
+
+    class Meta:
+        model = DuplicateReview
+        fields = (
+            "id",
+            "candidate",
+            "matched_candidate",
+            "match_type",
+            "status",
+            "notes",
+            "reviewed_by",
+            "reviewed_at",
+            "created_at",
+        )
+        read_only_fields = fields
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):

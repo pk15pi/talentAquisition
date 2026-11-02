@@ -16,10 +16,21 @@ class SalesOpportunityViewSet(ModelViewSet):
     def get_queryset(self):
         return visible_opportunities(self.request.user).select_related("client", "owner").order_by("-created_at")
 
-    def perform_create(self, serializer):
+    def _assignable_owner(self, serializer):
         from apps.access import user_has
 
-        owner = serializer.validated_data.get("owner")
-        if owner is None or not user_has(self.request.user, "sales.view_all_salesopportunity"):
-            owner = self.request.user
-        serializer.save(owner=owner)
+        current = serializer.instance.owner if serializer.instance is not None else None
+        requested = serializer.validated_data.get("owner", current)
+        if requested is None or not user_has(self.request.user, "sales.view_all_salesopportunity"):
+            return self.request.user if serializer.instance is None else current
+        if not requested.is_active:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError({"owner": "Choose an active user."})
+        return requested
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self._assignable_owner(serializer))
+
+    def perform_update(self, serializer):
+        serializer.save(owner=self._assignable_owner(serializer))

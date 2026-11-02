@@ -28,13 +28,8 @@ class Invoice(models.Model):
     @property
     def outstanding_amount(self): return self.total-self.paid_amount-self.credited_amount
     def recalculate_totals(self):
-        subtotal=Decimal("0.00"); tax=Decimal("0.00")
-        for line in self.lines.all():
-            base=line.unit_amount*line.quantity
-            subtotal += base
-            tax += base*line.tax_rate/Decimal("100")
-        self.subtotal=subtotal; self.tax_amount=tax; self.total=subtotal+tax
-        self.save(update_fields=["subtotal","tax_amount","total"])
+        from .services import recompute_invoice_totals
+        recompute_invoice_totals(self)
 class InvoiceLine(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     invoice=models.ForeignKey(Invoice,on_delete=models.CASCADE,related_name="lines")
@@ -59,10 +54,8 @@ class Payment(models.Model):
     class Meta: constraints=[models.CheckConstraint(condition=Q(amount__gt=0),name="payment_amount_positive")]
     def save(self,*args,**kwargs):
         super().save(*args,**kwargs)
-        invoice=self.invoice
-        if invoice.paid_amount >= invoice.total and invoice.total > 0: invoice.status="PAID"
-        elif invoice.paid_amount > 0: invoice.status="PART_PAID"
-        invoice.save(update_fields=["status"])
+        from .services import apply_payment_status
+        apply_payment_status(self.invoice)
 class CreditNote(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     invoice=models.ForeignKey(Invoice,on_delete=models.PROTECT,related_name="credit_notes")
@@ -76,3 +69,5 @@ class CreditNote(models.Model):
             year=localdate().year
             self.credit_note_number=next_business_code(f"credit-note-{year}",f"SW-CN-{year}-",4)
         super().save(*args,**kwargs)
+        from .services import apply_payment_status
+        apply_payment_status(self.invoice)

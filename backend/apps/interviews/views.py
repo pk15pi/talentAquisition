@@ -1,11 +1,13 @@
+from django.db import IntegrityError, transaction
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from apps.access import visible_interviews
 from apps.common import ModelActionPermission
 
-from .models import Interview
-from .serializers import InterviewSerializer
+from .models import Interview, InterviewParticipant
+from .serializers import InterviewParticipantSerializer, InterviewSerializer
 
 
 class InterviewViewSet(ModelViewSet):
@@ -22,3 +24,30 @@ class InterviewViewSet(ModelViewSet):
     def perform_update(self, serializer):
         serializer.instance._changed_by = self.request.user
         serializer.save()
+
+
+class InterviewParticipantViewSet(ModelViewSet):
+    queryset = InterviewParticipant.objects.select_related("interview", "user")
+    serializer_class = InterviewParticipantSerializer
+    permission_classes = [IsAuthenticated, ModelActionPermission]
+    action_permissions = {
+        "list": "interviews.view_interview",
+        "retrieve": "interviews.view_interview",
+        "create": "interviews.add_interview",
+        "update": "interviews.change_interview",
+        "partial_update": "interviews.change_interview",
+    }
+
+    def get_queryset(self):
+        return (
+            InterviewParticipant.objects.filter(interview__in=visible_interviews(self.request.user))
+            .select_related("interview", "user")
+            .order_by("interview_id", "name")
+        )
+
+    def perform_create(self, serializer):
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError as exc:
+            raise ValidationError("That user is already a participant on this interview.") from exc
