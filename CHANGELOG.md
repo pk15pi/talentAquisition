@@ -2,9 +2,39 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-02 — Phase 5 frontend pages
+
+Separate pull request into `master`. Left unmerged. No Phase 6 work. No migration. PR #4 is already merged.
+
+### Added
+
+- Tailwind 4 and the recruitment workspace: login, role-aware shell, dashboard, users, clients with contacts and activities, job descriptions with skills and match explanations, candidates, duplicate review, the application board, interviews, submissions, placements, billing, reports, and settings.
+- Vitest and Testing Library. `npm test` covers login, navigation, consent, pipeline moves, placement visibility, report zeros, duplicate approval, billing totals, and retention.
+- `frontend/scripts/verify-phase5.mjs` for the headless Chrome permission pass.
+- `GET /api/v1/users/me/` returns `permissions` and `is_superuser`. User rows include `can_own_client` and `can_be_assigned_recruiter`. These fields let the UI hide controls. The API permission checks are unchanged.
+- Optional parent filters on contacts, activities, notes, skills, interviews, and submissions, plus `status` on duplicate reviews. Read-only names on the records the new pages list.
+
+### Changed
+
+- "Find candidates" is not rendered without `jobs.run_match`. Mandatory skill failures are shown on the result. HR does not see billing navigation, placement CTC, fees, or revenue, or dashboard and report money. Management does, using the figures the API returns. A financial zero stays zero.
+- Candidate save still sends `consent_acknowledged` and `privacy_notice_version` only after the checkbox is checked. Duplicate approve and reject call `decide` and do not offer a merge.
+- Application buttons call `change-status` only for the legal next step, reject, or withdraw.
+
+### Verified
+
+- `python manage.py test apps` on PostgreSQL 16.15: 82 tests, OK.
+- `python manage.py check` with debug off: no issues.
+- `python manage.py makemigrations --check --dry-run`: no changes.
+- `npm run build`: exit 0. `npm test`: 13 passed.
+- Headless Chrome: HR blocked from billing and placement amounts; Management sees CTC ₹8,80,011.22, revenue ₹7,70,022.33, and invoice ₹6,54,321.09; Sales has no Find candidates; HR match lists missing Python; pipeline Identified to Contacted; consent required; duplicate approve does not merge.
+
+### Not done
+
+- Sales opportunity screens, report filters, duplicate merge, retention deletion, resume download in the browser (HR and Management still lack `candidates.view_resume_content`), and Phase 6 end-to-end automation.
+
 ## 2026-11-02 — Phase 4 APIs
 
-APIs only. No Phase 5 screens, no duplicate merge, no retention deletion, and no new migration. The pull request is https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged.
+APIs only. No Phase 5 screens, no duplicate merge, no retention deletion, and no new migration. The pull request is https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged. That pull request was later merged.
 
 ### Added
 

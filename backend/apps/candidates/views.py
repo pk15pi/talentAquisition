@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-from apps.common import ModelActionPermission, RequiresPermission
+from apps.common import INVALID_QUERY_ID, ModelActionPermission, RequiresPermission, query_uuid
 
 from .downloads import DOWNLOAD_MAX_AGE_SECONDS, download_path, make_download_token, read_download_token
 from .models import Candidate, CandidateNote, DuplicateReview, Resume
@@ -86,6 +86,17 @@ class DuplicateReviewViewSet(ReadOnlyModelViewSet):
         "retrieve": "candidates.review_duplicate",
         "decide": "candidates.review_duplicate",
     }
+
+    def get_queryset(self):
+        queryset = DuplicateReview.objects.select_related("candidate", "matched_candidate", "reviewed_by").order_by(
+            "-created_at"
+        )
+        status = (self.request.query_params.get("status") or "").strip()
+        if status:
+            if status not in {value for value, _label in DuplicateReview.Status.choices}:
+                return queryset.none()
+            queryset = queryset.filter(status=status)
+        return queryset
 
     @action(detail=True, methods=["post"])
     def decide(self, request, pk=None, **kwargs):
@@ -179,6 +190,15 @@ class CandidateNoteViewSet(ModelViewSet):
     queryset = CandidateNote.objects.all()
     serializer_class = CandidateNoteSerializer
     permission_classes = [IsAuthenticated, ModelActionPermission]
+
+    def get_queryset(self):
+        queryset = CandidateNote.objects.select_related("user", "candidate").order_by("-created_at")
+        candidate_id = query_uuid(self.request.query_params.get("candidate"))
+        if candidate_id is INVALID_QUERY_ID:
+            return queryset.none()
+        if candidate_id is not None:
+            queryset = queryset.filter(candidate_id=candidate_id)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

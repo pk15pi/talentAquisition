@@ -48,12 +48,20 @@ class InvoiceSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["client_name"] = instance.client.company_name if instance.client_id else ""
+        data["client_code"] = instance.client.client_code if instance.client_id else ""
+        return data
+
 
 class PaymentSerializer(serializers.ModelSerializer):
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+
     class Meta:
         model = Payment
         fields = "__all__"
-        read_only_fields = ("recorded_by",)
+        read_only_fields = ("recorded_by", "invoice_number")
 
     def validate(self, attrs):
         invoice = attrs.get("invoice", getattr(self.instance, "invoice", None))
@@ -64,10 +72,12 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 
 class CreditNoteSerializer(serializers.ModelSerializer):
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+
     class Meta:
         model = CreditNote
         fields = "__all__"
-        read_only_fields = ("id", "credit_note_number", "created_by")
+        read_only_fields = ("id", "credit_note_number", "created_by", "invoice_number")
 
     def validate(self, attrs):
         if self.instance is not None and "invoice" in attrs and attrs["invoice"].pk != self.instance.invoice_id:

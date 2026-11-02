@@ -125,7 +125,14 @@ class DuplicateReviewSerializer(serializers.ModelSerializer):
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+
     class Meta:
         model = CandidateNote
         fields = "__all__"
-        read_only_fields = ("user", "created_at")
+        read_only_fields = ("user", "created_at", "user_name")
+
+    def get_user_name(self, obj):
+        if not obj.user_id:
+            return ""
+        return obj.user.get_full_name() or obj.user.username

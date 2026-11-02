@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from apps.access import user_has, visible_clients
-from apps.common import ModelActionPermission
+from apps.common import INVALID_QUERY_ID, ModelActionPermission, query_uuid
 
 from .models import Client, ClientActivity, ClientContact, ClientOwnershipHistory
 from .serializers import ClientActivitySerializer, ClientContactSerializer, ClientSerializer
@@ -56,7 +56,13 @@ class ClientContactViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated, ModelActionPermission]
 
     def get_queryset(self):
-        return ClientContact.objects.select_related("client").filter(client__in=visible_clients(self.request.user))
+        queryset = ClientContact.objects.select_related("client").filter(client__in=visible_clients(self.request.user))
+        client_id = query_uuid(self.request.query_params.get("client"))
+        if client_id is INVALID_QUERY_ID:
+            return queryset.none()
+        if client_id is not None:
+            queryset = queryset.filter(client_id=client_id)
+        return queryset
 
     def perform_create(self, serializer):
         client = serializer.validated_data["client"]
@@ -71,11 +77,17 @@ class ClientActivityViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated, ModelActionPermission]
 
     def get_queryset(self):
-        return (
+        queryset = (
             ClientActivity.objects.select_related("client", "user")
             .filter(client__in=visible_clients(self.request.user))
             .order_by("-created_at")
         )
+        client_id = query_uuid(self.request.query_params.get("client"))
+        if client_id is INVALID_QUERY_ID:
+            return queryset.none()
+        if client_id is not None:
+            queryset = queryset.filter(client_id=client_id)
+        return queryset
 
     def perform_create(self, serializer):
         client = serializer.validated_data["client"]
