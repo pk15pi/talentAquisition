@@ -15,7 +15,7 @@ from .serializers import JobSerializer
 
 
 class JobViewSet(ModelViewSet):
-    queryset = Job.objects.select_related("client", "sales_owner", "created_by").prefetch_related("assignments").all().order_by("-created_at")
+    queryset = Job.objects.select_related("client", "sales_owner", "created_by").prefetch_related("assignments__recruiter").all().order_by("-created_at")
     serializer_class = JobSerializer
     permission_classes = [IsAuthenticated, ModelActionPermission]
     action_permissions = {
@@ -27,7 +27,7 @@ class JobViewSet(ModelViewSet):
         return (
             visible_jobs(self.request.user)
             .select_related("client", "sales_owner", "created_by")
-            .prefetch_related("assignments")
+            .prefetch_related("assignments__recruiter")
             .order_by("-created_at")
         )
 

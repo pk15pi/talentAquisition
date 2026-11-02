@@ -1,4 +1,18 @@
+import uuid
+
 from rest_framework.permissions import BasePermission, DjangoModelPermissions
+
+INVALID_QUERY_ID = object()
+
+
+def query_uuid(value):
+    """Parse an optional query-string id. Empty is None. A bad value is INVALID_QUERY_ID."""
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return INVALID_QUERY_ID
 
 
 class ModelActionPermission(DjangoModelPermissions):

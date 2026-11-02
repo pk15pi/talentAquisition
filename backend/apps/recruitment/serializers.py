@@ -7,18 +7,49 @@ from .services import PENDING, submission_status_allowed
 
 
 class SubmissionSerializer(serializers.ModelSerializer):
+    candidate_name = serializers.CharField(source="application.candidate.full_name", read_only=True)
+    candidate_code = serializers.CharField(source="application.candidate.candidate_code", read_only=True)
+    job_title = serializers.CharField(source="application.job.title", read_only=True)
+    job_code = serializers.CharField(source="application.job.job_code", read_only=True)
+    application_code = serializers.CharField(source="application.application_code", read_only=True)
+    resume_filename = serializers.CharField(source="resume.original_filename", read_only=True)
+    submitted_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Submission
         fields = (
             "id",
             "application",
+            "application_code",
+            "candidate_name",
+            "candidate_code",
+            "job_title",
+            "job_code",
             "submitted_by",
+            "submitted_by_name",
             "resume",
+            "resume_filename",
             "submission_date",
             "client_feedback",
             "response_status",
         )
-        read_only_fields = ("id", "submitted_by", "submission_date")
+        read_only_fields = (
+            "id",
+            "submitted_by",
+            "submission_date",
+            "candidate_name",
+            "candidate_code",
+            "job_title",
+            "job_code",
+            "application_code",
+            "resume_filename",
+            "submitted_by_name",
+        )
+
+    def get_submitted_by_name(self, obj):
+        if not obj.submitted_by_id:
+            return ""
+        return obj.submitted_by.get_full_name() or obj.submitted_by.username
 
     def validate(self, attrs):
         application = attrs.get("application") or getattr(self.instance, "application", None)

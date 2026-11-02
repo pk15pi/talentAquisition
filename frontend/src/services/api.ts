@@ -64,6 +64,11 @@ api.interceptors.response.use(
   },
 );
 
+export function apiOrigin() {
+  const base = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  return base.replace(/\/api\/v1\/?$/, "");
+}
+
 export async function login(username: string, password: string) {
   const { data } = await api.post("/auth/token/", { username, password });
   localStorage.setItem("access", data.access);

@@ -1,8 +1,57 @@
 # SynfoTalent development status
 
-Updated for the Phase 4 API pull request, 2026-11-02. PR #3 is merged on `master`. Phase 4 is in https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged. Phase 5 React screens and later phases were not started.
+Updated for the Phase 5 frontend pull request, 2026-11-02. PR #4 is merged on `master`. Phase 5 is a separate pull request into `master` and was left unmerged. Phase 6 and later were not started.
 
-**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. For this phase, frontend integration means the existing screens still work against the API. No new React screens were added. The jobs list now calls the matcher instead of leaving "Find candidates" disabled. Modules that still have no screen stay incomplete.
+**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Phase 5 wires the React workspace to the Phase 4 APIs. React checks hide controls; the API remains the authorization. Modules that still lack a workflow, a retention job, or a browser pass stay incomplete.
+
+## Phase 5 — frontend pages
+
+Tailwind 4 is installed and used for the shell and pages. The JWT refresh interceptor is unchanged. `GET /api/v1/users/me/` now also returns `permissions` and `is_superuser` so the shell can hide controls. That list is not authorization. Active superusers still pass `has_perm` even when a codename is missing from an ordinary user's list; Django 5.2 already puts every codename on an active superuser's `get_all_permissions()`, and the flag is returned as well. User rows gained `can_own_client` and `can_be_assigned_recruiter` so owner and recruiter dropdowns only offer people the API would accept. Child lists accept an optional parent id (`client`, `job`, `candidate`, `application`) and duplicate reviews accept `status`. Display names were added for clients, jobs, placements, interviews, submissions, invoices, payments, and credit notes. No migration. No matcher rewrite, no duplicate merge, no retention deletion.
+
+Pages, gated by the caller's permissions:
+
+- Login, with the access token re-read so a successful sign-in leaves the login page while `/users/me/` loads.
+- Dashboard. Financial figures render only with `reports.view_financial_report`. HR does not see them. A zero from the API stays zero.
+- Users, for `accounts.view_user`. Create and deactivate only with `add_user` and `delete_user`.
+- Clients, including contacts, activities, and commercial defaults when the caller can change clients or view financials. HR does not get fee fields.
+- Job descriptions: create, recruiter assignment, skills, and a match explanation. Mandatory skill failures are called out. "Find candidates" is omitted without `jobs.run_match`. A 403 shows the API message.
+- Candidates: consent checkbox and privacy notice version are required before `POST`. Resume upload when allowed. Download only with `candidates.view_resume_content` (not on HR or Management by default). Notes and skills.
+- Duplicate review: approve or reject. The screen says the decision does not merge or delete profiles. There is no merge control.
+- Applications board: candidate and job names, and only the legal next status plus reject or withdraw. Re-apply creates a new row after reject or withdraw.
+- Interviews: schedule, reschedule, participants, and feedback for anyone who can view interviews.
+- Submissions: create from the candidate's resume and move only along the submission map. The application status is not changed by the screen.
+- Placements: HR is view-only and the financial columns are not rendered. Management sees CTC, fee, and revenue when `placements.view_placement_financials` is held. Create is shown only when the caller can both add a placement and change financial fields.
+- Billing: invoices, lines, payments, and credit notes. Header totals are displayed from the API and are not an input. HR has no nav link; opening `/billing` shows a permission message.
+- Reports: tables for the three existing endpoints. No JSON dump.
+- Settings: retention days and the privacy notice. Blank retention is saved as null.
+
+**Not in this phase:** sales-opportunity screens, department editing, consent withdrawal, resume malware scanning, duplicate merge, retention deletion, report filters, invoice-header reconciliation in the admin, and the Phase 6 end-to-end suite. The pipeline board paginates with the API page size of 25. Dropdowns load at most eight pages.
+
+**Tests that ran (Phase 5, 2026-11-02)**
+
+| Command | Result |
+| --- | --- |
+| `python manage.py test apps` against PostgreSQL 16.15 | 82 tests, OK, 0 failures |
+| `python manage.py check` with `DJANGO_DEBUG=0` and a non-dev secret | No issues |
+| `python manage.py makemigrations --check --dry-run` | No changes detected |
+| `npm run build` (`tsc -b && vite build`) | Exit 0 |
+| `npm test` (`vitest run`) | 13 tests, passed |
+
+Vitest covers login and the route guard, HR versus Management navigation, the candidate consent payload, legal pipeline buttons, HR placement amounts staying off the page, report zeros, duplicate approve without a merge control, billing totals as text, and blank retention saved as null.
+
+Headless Chrome, `node frontend/scripts/verify-phase5.mjs`, against `runserver` and Vite on PostgreSQL. Users `hrphase5`, `salesphase5`, and `mgmtphase5`:
+
+- HR dashboard has no Billing link and no "Invoiced revenue". `/billing` says the account cannot view the page. The placement row for Has Python shows candidate, job, application, joining date, and Offered, and does not show CTC, fee, or revenue.
+- HR moved `SW-APP-00001` from Identified to Contacted.
+- HR could not save a candidate until the consent box was checked, then `Consent Candidate …` appeared.
+- HR approved the pending email duplicate. The notice says the profiles were not merged.
+- HR "Find candidates" showed mandatory skill failure for candidates missing Python, and said nobody was shortlisted or rejected.
+- Sales opened Backend Engineer and had no "Find candidates" button. Fee override fields were visible because Sales can change clients.
+- Management dashboard shows invoiced revenue. The placement shows offered CTC ₹8,80,011.22 and expected revenue ₹7,70,022.33. Billing shows `SW-INV-2026-0001` at ₹6,54,321.09.
+
+Screenshots: `/opt/cursor/artifacts/screenshots/phase5-hr-dashboard.png`, `phase5-hr-billing-denied.png`, `phase5-hr-placement.png`, `phase5-hr-pipeline-contacted.png`, `phase5-hr-candidate-consent.png`, `phase5-hr-duplicate-approved.png`, `phase5-hr-match-explanation.png`, `phase5-sales-match-hidden.png`, `phase5-management-dashboard.png`, `phase5-management-placement.png`, `phase5-management-billing.png`.
+
+The sections below are the Phase 4 record unless a line above replaces them. Phase 4's own test run is kept here.
 
 **Tests that ran (Phase 4 APIs, 2026-11-02)**
 
@@ -270,15 +319,15 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 16. Frontend shell
 
 - **Module name:** Frontend
-- **Current implementation status:** Partial. `npm run build` succeeds. Axios refreshes the access token once after a 401. The candidate form requires consent and a notice version. Tailwind is still not installed. No component tests.
-- **Completed features:** None.
-- **Pending features:** The Phase 5 page list. Role-aware navigation. Pagination controls. Hiding Match for users without `jobs.run_match`.
-- **Known bugs:** The jobs page calls the working matcher and shows only the candidate count. It does not hide the button from users without `jobs.run_match`; those users see the API's permission error. Applications still show raw ids even though the payload now includes names. Reports still render JSON.
-- **Tests executed:** `npm run build` exit 0. Headless Chrome: Team Lead match notice and Sales permission error, described at the top of this file. No Vitest.
-- **Tests passed:** The production build.
-- **Tests failed:** None in that command.
-- **Security issues:** Tokens remain in `localStorage`.
-- **Next development tasks:** Phase 5 pages. The match request no longer returns 503.
+- **Current implementation status:** Partial. Phase 5 replaced the starter screens. Tailwind 4 is installed. Axios still refreshes the access token once after a 401. See the Phase 5 section at the top for the page list and the Chrome pass.
+- **Completed features:** None under the full product rule. The wired screens are listed above.
+- **Pending features:** Sales opportunity UI, report filters, a browser pass for interviews and submissions, and resume download for an account that holds `candidates.view_resume_content`.
+- **Known bugs:** The pipeline board shows one API page at a time. Dropdowns stop after eight pages.
+- **Tests executed:** `npm run build` exit 0. `npm test` 13 passed. Headless Chrome script described at the top.
+- **Tests passed:** Those commands.
+- **Tests failed:** None in those commands.
+- **Security issues:** Tokens remain in `localStorage`. React permission checks are not authorization.
+- **Next development tasks:** Phase 6 workflow checks. Do not treat the shell as a replacement for the API.
 
 ---
 
@@ -287,16 +336,16 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 | Area | Backend | Frontend wired | Automated tests | Complete |
 | --- | --- | --- | --- | --- |
 | Boot, versioning, errors, health | Yes | Build passes; health is not a page | Yes | No |
-| Groups and permissions | Yes | No admin UI | Yes | No |
-| JWT refresh | Endpoint yes | Interceptor written, not browser-tested | Endpoint yes | No |
-| Clients and commercial defaults | Yes | List/create only | Yes for scope, contact denial, terms | No |
-| JD assignment and visibility | Yes | Create and match button | Yes, including a successful match | No |
-| Consent and duplicate review | Yes, including decide API | Consent fields on the form; no review screen | API and model yes; consent browser check is from the earlier session | No |
-| One active application and legal transitions | Yes | Create only | Yes | No |
-| Interviews and participants | Yes, sales blocked | No page | Yes | No |
-| Placement terms and invoice visibility | Yes, including Django admin | No pages | Yes | No |
-| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, admin tests inside the 78 | No |
-| Retention settings | Yes | No page | Yes | No |
-| Matching engine | Scores and explains; no auto-decision | Button calls it and shows the count | Yes | No |
-| Submissions and credit notes | API yes | No | Yes | No |
-| Filtered reports | Missing filters | JSON dump | Overview financial zero for HR only | No |
+| Groups and permissions | Yes | Shell hides controls from `/users/me/` permissions. Not authorization | API yes; Vitest nav | No |
+| JWT refresh | Endpoint yes | Interceptor unchanged. Login leaves the page after the token is stored | Endpoint yes; Vitest login | No |
+| Clients and commercial defaults | Yes | List, create, contacts, activities. Fees hidden from HR | API yes; Vitest hides the HR fee field | No |
+| JD assignment and visibility | Yes | Create, assign, skills, explanation panel. Match hidden without `run_match` | API yes; Vitest; Chrome sales and HR | No |
+| Consent and duplicate review | Yes, decide does not merge | Consent blocks save. Review screen approves or rejects | API yes; Vitest; Chrome consent and approve | No |
+| One active application and legal transitions | Yes | Board shows names and legal next steps, plus re-apply | API yes; Vitest; Chrome Identified to Contacted | No |
+| Interviews and participants | Yes, sales blocked | Schedule, reschedule, participants, feedback | API yes. Not in the Chrome script | No |
+| Placement terms and invoice visibility | Yes | HR view without amounts. Management sees CTC, fee, revenue, and billing | API yes; Vitest; Chrome HR and Management | No |
+| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, inside the 82 | No |
+| Retention settings | Yes, still not enforced | Settings page. Blank stays null | API yes; Vitest patch | No |
+| Matching engine | Scores and explains; no auto-decision | Explanation panel, mandatory failures prominent | API yes; Chrome HR match | No |
+| Submissions and credit notes | API yes | Submission screen and billing credit-note form | API yes. Chrome opened billing, not a new credit note | No |
+| Filtered reports | Filters still absent | Tables, not JSON. HR financial figures omitted; a returned zero stays zero | Vitest; Chrome HR versus Management | No |

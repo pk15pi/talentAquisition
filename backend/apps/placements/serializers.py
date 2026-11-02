@@ -89,6 +89,12 @@ class PlacementSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        application = instance.application
+        data["candidate_name"] = application.candidate.full_name if application.candidate_id else ""
+        data["candidate_code"] = application.candidate.candidate_code if application.candidate_id else ""
+        data["job_title"] = application.job.title if application.job_id else ""
+        data["job_code"] = application.job.job_code if application.job_id else ""
+        data["application_code"] = application.application_code
         if not self._can_view_financials():
             for field in FINANCIAL_FIELDS:
                 data.pop(field, None)

@@ -35,11 +35,17 @@ class UserViewSet(ModelViewSet):
     def get_queryset(self):
         if user_has(self.request.user, "accounts.view_user"):
             return super().get_queryset()
-        return User.objects.filter(id=self.request.user.id)
+        return User.objects.filter(id=self.request.user.id).order_by("first_name", "last_name", "username")
 
     @action(detail=False, methods=["get"])
     def me(self, request, **kwargs):
-        return Response(self.get_serializer(request.user).data)
+        data = self.get_serializer(request.user).data
+        # The React shell hides controls from this list. It is not authorization.
+        # Active superusers pass has_perm without those codenames being listed,
+        # so the client also receives is_superuser.
+        data["permissions"] = sorted(request.user.get_all_permissions())
+        data["is_superuser"] = bool(request.user.is_superuser)
+        return Response(data)
 
     def destroy(self, request, *args, **kwargs):
         if not user_has(request.user, "accounts.delete_user"):

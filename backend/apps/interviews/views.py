@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from apps.access import visible_interviews
-from apps.common import ModelActionPermission
+from apps.common import INVALID_QUERY_ID, ModelActionPermission, query_uuid
 
 from .models import Interview, InterviewParticipant
 from .serializers import InterviewParticipantSerializer, InterviewSerializer
@@ -16,7 +16,17 @@ class InterviewViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated, ModelActionPermission]
 
     def get_queryset(self):
-        return visible_interviews(self.request.user).select_related("application").order_by("-interview_date")
+        queryset = (
+            visible_interviews(self.request.user)
+            .select_related("application__candidate", "application__job", "created_by")
+            .order_by("-interview_date")
+        )
+        application_id = query_uuid(self.request.query_params.get("application"))
+        if application_id is INVALID_QUERY_ID:
+            return queryset.none()
+        if application_id is not None:
+            queryset = queryset.filter(application_id=application_id)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

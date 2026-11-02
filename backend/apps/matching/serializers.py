@@ -10,15 +10,21 @@ class SkillSerializer(serializers.ModelSerializer):
 
 
 class CandidateSkillSerializer(serializers.ModelSerializer):
+    skill_name = serializers.CharField(source="skill.name", read_only=True)
+
     class Meta:
         model = CandidateSkill
         fields = "__all__"
+        read_only_fields = ("skill_name",)
 
 
 class JobSkillSerializer(serializers.ModelSerializer):
+    skill_name = serializers.CharField(source="skill.name", read_only=True)
+
     class Meta:
         model = JobSkill
         fields = "__all__"
+        read_only_fields = ("skill_name",)
 
 
 class MatchResultSerializer(serializers.ModelSerializer):
