@@ -326,5 +326,54 @@ class SensitiveAdminLeakTests(SynfoAPITestCase):
                 self.assertNotIn(secret.encode(), response.content)
         self.assertNotIn(b'type="file"', surfaces[1].content)
         self.assertNotIn(b'type="file"', surfaces[3].content)
+        for page in (surfaces[0], surfaces[1], surfaces[2], surfaces[3]):
+            self.assertNotIn(b"current_ctc", page.content)
+            self.assertNotIn(b"expected_ctc", page.content)
+            self.assertNotIn(b"parsed_text", page.content)
+            self.assertNotIn(b"file_hash", page.content)
+        placement_page = surfaces[5]
+        self.assertContains(placement_page, "View placement")
+        self.assertContains(placement_page, "Close")
+        self.assertNotIn(b"offered_ctc", placement_page.content)
+        self.assertNotIn(b"expected_revenue", placement_page.content)
+        self.assertNotIn(b"agreed_fee", placement_page.content)
+        self.assertEqual(hr.post(f"/admin/placements/placement/{self.placement.pk}/change/", {"status": "JOINED"}).status_code, 403)
         self.assertIn(b"leak.pdf", surfaces[1].content)
         self.assertIn(b"Leak Candidate", surfaces[6].content)
+        self.assertIn(b"Leak Candidate", surfaces[7].content)
+
+    def test_placement_financials_do_not_leak_through_related_invoice_widgets(self):
+        from apps.billing.models import Invoice
+
+        invoice = Invoice.objects.create(
+            client=self.company,
+            invoice_date="2026-11-02",
+            due_date="2026-11-02",
+            subtotal=Decimal("10.00"),
+            total=Decimal("10.00"),
+            created_by=self.management,
+        )
+        user_model = get_user_model()
+        clerk = user_model.objects.create_user("leak-clerk", password=self.password, role="HR")
+        clerk.groups.clear()
+        for app_label, codename in (
+            ("billing", "view_invoice"),
+            ("billing", "view_invoiceline"),
+            ("placements", "view_placement"),
+        ):
+            grant(clerk, app_label, codename)
+        client, _user = staff_client(clerk)
+        page = client.get(f"/admin/billing/invoice/{invoice.pk}/change/")
+        self.assertEqual(page.status_code, 200)
+        autocomplete = client.get(
+            "/admin/autocomplete/",
+            {"app_label": "billing", "model_name": "invoiceline", "field_name": "placement", "term": "Leak"},
+        )
+        self.assertEqual(autocomplete.status_code, 200)
+        for response in (page, autocomplete):
+            self.assertNotIn(SECRET_OFFERED.encode(), response.content)
+            self.assertNotIn(SECRET_REVENUE.encode(), response.content)
+            self.assertNotIn(b"offered_ctc", response.content)
+            self.assertNotIn(b"expected_revenue", response.content)
+        self.assertIn(b"Leak Candidate", autocomplete.content)
+        self.assertEqual(client.post(f"/admin/placements/placement/{self.placement.pk}/change/", {"status": "JOINED"}).status_code, 403)

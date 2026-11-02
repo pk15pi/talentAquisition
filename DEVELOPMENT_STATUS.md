@@ -1,19 +1,20 @@
 # SynfoTalent development status
 
-Updated after Phase 3 (Django admin), 2026-11-01. Phase 4 and later have not been started.
+Updated after the Phase 3 review-fix follow-up, 2026-11-02. Phase 4 and later have not been started. PR #2 merged the first admin commit only. The review fixes, including `candidates.0003`, are in the follow-up pull request and are not in `master` until that pull request is merged.
 
 **Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Foundation and schema work can be in place without the feature being complete. Phase 3 is an operator admin, not a React feature, so the product modules below stay incomplete under that rule even though the admin behavior is tested.
 
-**Tests that ran (Phase 3, 2026-11-01)**
+**Tests that ran (review-fix follow-up, 2026-11-02)**
 
 | Command | Result |
 | --- | --- |
-| `python manage.py test apps` against PostgreSQL 16 | 65 tests, OK, 0 failures |
+| `python manage.py test apps` against PostgreSQL 16 | 66 tests, OK, 0 failures |
 | `python manage.py check` | No issues |
 | `python manage.py makemigrations --check --dry-run` | No changes detected |
-| Chrome session on `/admin/` | HR placement is view-only with no fee fields; HR invoice URL is 403; Management sees CTC `880011.22`, revenue `770022.33`, and invoice total `654321.09`. Screenshots and recording below. |
 
-No migration files were added or edited. The matching scorer was not changed.
+The 2026-11-01 Chrome session still stands for the first admin pass: HR placement is view-only with no fee fields; HR invoice URL is 403; Management sees CTC `880011.22`, revenue `770022.33`, and invoice total `654321.09`.
+
+`candidates.0003_consent_evidence_optional_timestamp` is the only new migration. It is required so a documented non-consent basis can be stored without a fabricated consent timestamp. No earlier migration was edited. The matching scorer was not changed.
 
 ## Phase 3 — Django admin
 

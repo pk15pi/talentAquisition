@@ -17,9 +17,10 @@ All notable changes to SynfoTalent are recorded here. The format is based on Kee
 
 ### Verified
 
-- `python manage.py test apps` on PostgreSQL 16: 65 tests, OK, 0 failures.
+- `python manage.py test apps` on PostgreSQL 16, re-run 2026-11-02: 66 tests, OK, 0 failures. The extra test checks that placement CTC and revenue do not appear on an invoice form or its placement autocomplete for a user without `placements.view_placement_financials`.
 - `python manage.py check`: no issues.
 - `python manage.py makemigrations --check --dry-run`: no changes.
+- Sensitive-data coverage is in `backend/apps/accounts/tests/test_admin_review.py` (`SensitiveAdminLeakTests`) and `backend/apps/accounts/tests/test_admin_permissions.py` (`test_resume_and_compensation_fields_follow_their_permissions`, `test_hr_placement_is_view_only_and_hides_financial_fields`). Those tests were already on this branch; the invoice-widget case was added in this follow-up.
 
 ## 2026-11-01 — Phase 3 Django admin
 
