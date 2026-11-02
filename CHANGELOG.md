@@ -2,6 +2,10 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-02 — Phase 3 review-fix follow-up pull request
+
+PR #2 was already merged, so the review fixes were not in `master`. They are in https://github.com/pk15pi/talentAquisition/pull/3, which was left unmerged. The verification below is the 2026-11-02 run.
+
 ## 2026-11-01 — Phase 3 review corrections
 
 ### Fixed

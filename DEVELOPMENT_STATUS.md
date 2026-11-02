@@ -1,6 +1,6 @@
 # SynfoTalent development status
 
-Updated after the Phase 3 review-fix follow-up, 2026-11-02. Phase 4 and later have not been started. PR #2 merged the first admin commit only. The review fixes, including `candidates.0003`, are in the follow-up pull request and are not in `master` until that pull request is merged.
+Updated after the Phase 3 review-fix follow-up, 2026-11-02. Phase 4 and later have not been started. PR #2 merged the first admin commit only. The review fixes, including `candidates.0003`, are in https://github.com/pk15pi/talentAquisition/pull/3 and are not in `master` until that pull request is merged. It was left unmerged.
 
 **Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Foundation and schema work can be in place without the feature being complete. Phase 3 is an operator admin, not a React feature, so the product modules below stay incomplete under that rule even though the admin behavior is tested.
 
