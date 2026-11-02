@@ -2,6 +2,8 @@
 
 Date: 2026-11-02. Branch: `cursor/completion-gaps-b414`. History, bottom to top: `master` at `635cc4d` (Phase 5), production packaging `0c0c49f` (`cursor/phase-10-production-deploy-757a`), then the baseline audit and the completion commit. `0c0c49f` is an ancestor. It was not rewritten. Compare: https://github.com/pk15pi/talentAquisition/compare/master...cursor/completion-gaps-b414
 
+The pull-request tool failed again, the same way it did for the packaging branch. Open the unmerged request from https://github.com/pk15pi/talentAquisition/pull/new/cursor/completion-gaps-b414 if a PR is required. This agent did not merge.
+
 This report follows `FINAL_AUDIT_BASELINE.md`, which was committed before the product fixes. The production-prep agent (`bc-64130237-fd50-5ec8-a1d1-a677d6d1757a`) could not open a PR. Its Gunicorn, Nginx, non-root images, `docker-compose.prod.yml`, secure settings, Redis password, and signed object-storage redirect are on this branch. A `beat` service was added to both Compose files so retention has a process. Nothing is merged.
 
 ## Completion
