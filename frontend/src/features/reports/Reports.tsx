@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/session";
-import { Alert, PageHeader, Panel } from "../../components/ui";
+import { Alert, Field, PageHeader, Panel, TextInput, primaryButton } from "../../components/ui";
 import { errorMessage } from "../../lib/errors";
 import { displayName } from "../../auth/types";
 import { inr } from "../../lib/workflow";
@@ -42,14 +42,17 @@ export default function Reports() {
   const [hr, setHr] = useState<{ applications_by_recruiter: NamedCount[]; candidates_sourced_by: NamedCount[] } | null>(null);
   const [sales, setSales] = useState<{ jds_by_sales_owner: NamedCount[]; clients_by_sales_owner: NamedCount[] } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [filters, setFilters] = useState({ date_from: "", date_to: "", status: "", client: "", job: "", recruiter: "", sales_executive: "", department: "", employee: "" });
+  const [applied, setApplied] = useState(filters);
 
   useEffect(() => {
     const messages: string[] = [];
+    const params = Object.fromEntries(Object.entries(applied).filter(([, value]) => value));
     const jobs: Promise<void>[] = [];
     if (can("reports.view_overview_report")) {
       jobs.push(
         api
-          .get<Overview>("/reports/overview/")
+          .get<Overview>("/reports/overview/", { params })
           .then((response) => {
             setOverview(response.data);
           })
@@ -61,7 +64,7 @@ export default function Reports() {
     if (can("reports.view_hr_report")) {
       jobs.push(
         api
-          .get("/reports/hr/")
+          .get("/reports/hr/", { params })
           .then((response) => {
             setHr(response.data);
           })
@@ -73,7 +76,7 @@ export default function Reports() {
     if (can("reports.view_sales_report")) {
       jobs.push(
         api
-          .get("/reports/sales/")
+          .get("/reports/sales/", { params })
           .then((response) => {
             setSales(response.data);
           })
@@ -83,11 +86,35 @@ export default function Reports() {
       );
     }
     Promise.all(jobs).then(() => setErrors(messages));
-  }, [can]);
+  }, [can, applied]);
 
   return (
     <>
-      <PageHeader eyebrow="ANALYTICS" title="Performance reports" description="Counts from the existing report endpoints." />
+      <PageHeader
+        eyebrow="ANALYTICS"
+        title="Performance reports"
+        description="Client credit uses the owner at creation. JD credit uses the current sales owner because job owner changes are not historized. Recruitment counts use the recruiter stored on the application."
+      />
+      <Panel title="Filters">
+        <form
+          className="grid gap-3 md:grid-cols-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setApplied(filters);
+          }}
+        >
+          <Field label="From"><TextInput type="date" value={filters.date_from} onChange={(event) => setFilters({ ...filters, date_from: event.target.value })} /></Field>
+          <Field label="To"><TextInput type="date" value={filters.date_to} onChange={(event) => setFilters({ ...filters, date_to: event.target.value })} /></Field>
+          <Field label="Status"><TextInput value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} placeholder="OPEN, IDENTIFIED, ACTIVE" /></Field>
+          <Field label="Client id"><TextInput value={filters.client} onChange={(event) => setFilters({ ...filters, client: event.target.value })} /></Field>
+          <Field label="Job id"><TextInput value={filters.job} onChange={(event) => setFilters({ ...filters, job: event.target.value })} /></Field>
+          <Field label="Recruiter id"><TextInput value={filters.recruiter} onChange={(event) => setFilters({ ...filters, recruiter: event.target.value })} /></Field>
+          <Field label="Sales executive id"><TextInput value={filters.sales_executive} onChange={(event) => setFilters({ ...filters, sales_executive: event.target.value })} /></Field>
+          <Field label="Department id"><TextInput value={filters.department} onChange={(event) => setFilters({ ...filters, department: event.target.value })} /></Field>
+          <Field label="Employee id"><TextInput value={filters.employee} onChange={(event) => setFilters({ ...filters, employee: event.target.value })} /></Field>
+          <button className={primaryButton} type="submit">Apply filters</button>
+        </form>
+      </Panel>
       {errors.map((message) => (
         <Alert key={message}>{message}</Alert>
       ))}

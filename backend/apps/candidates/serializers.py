@@ -35,6 +35,8 @@ class CandidateSerializer(serializers.ModelSerializer):
             "normalized_phone",
             "consent_recorded_at",
             "consent_withdrawn_at",
+            "merged_into",
+            "merged_at",
             "created_at",
             "updated_at",
             "current_ctc",
@@ -88,6 +90,19 @@ class CandidateSerializer(serializers.ModelSerializer):
             source="api",
         )
         queue_identity_duplicate_reviews(candidate)
+        from apps.audit.services import record_audit
+
+        record_audit(
+            user=candidate.sourced_by,
+            action="consent_recorded",
+            entity_type="candidates.Candidate",
+            entity_id=candidate.pk,
+            details={
+                "privacy_notice_version": candidate.privacy_notice_version,
+                "consent_recorded_at": candidate.consent_recorded_at.isoformat(),
+                "processing_basis": "consent",
+            },
+        )
         return candidate
 
     def to_representation(self, instance):

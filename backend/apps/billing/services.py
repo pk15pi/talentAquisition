@@ -88,7 +88,39 @@ def issue_credit_note(*, invoice, amount, reason, issue_date, user):
         )
         note.save()
         apply_payment_status(locked)
+        audit_billing(user, "credit_note_saved", note, {"invoice_id": str(locked.pk), "amount": str(note.amount), "created": True})
         return note
+
+
+def audit_billing(user, action, obj, details=None):
+    from apps.audit.services import record_audit
+
+    record_audit(
+        user=user,
+        action=action,
+        entity_type=obj._meta.label,
+        entity_id=obj.pk,
+        details=details or {},
+    )
+
+
+def save_payment_within_capacity(payment) -> bool:
+    """Lock the invoice, reject an over-cap payment, and save inside that lock."""
+    with transaction.atomic():
+        locked = Invoice.objects.select_for_update().get(pk=payment.invoice_id)
+        if payment.amount > remaining_capacity(locked, exclude_payment=payment if payment.pk else None):
+            return False
+        payment.save()
+        return True
+
+
+def save_credit_within_capacity(note) -> bool:
+    with transaction.atomic():
+        locked = Invoice.objects.select_for_update().get(pk=note.invoice_id)
+        if note.amount > remaining_capacity(locked, exclude_credit=note if note.pk else None):
+            return False
+        note.save()
+        return True
 
 
 def update_credit_note(note, **changes):
@@ -102,4 +134,10 @@ def update_credit_note(note, **changes):
             setattr(note, field, value)
         note.save()
         apply_payment_status(locked)
+        audit_billing(
+            note.created_by,
+            "credit_note_saved",
+            note,
+            {"invoice_id": str(locked.pk), "amount": str(note.amount), "created": False},
+        )
         return note

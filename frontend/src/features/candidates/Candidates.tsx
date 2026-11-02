@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../../auth/session";
-import { Alert, Empty, Field, PageHeader, Pager, Panel, Select, TextArea, TextInput, primaryButton, tinyButton } from "../../components/ui";
+import { Alert, Empty, Field, PageHeader, Pager, Panel, Select, TextArea, TextInput, primaryButton, secondaryButton, tinyButton } from "../../components/ui";
 import { errorMessage } from "../../lib/errors";
 import { fetchAll } from "../../lib/paging";
 import { usePaged } from "../../lib/usePaged";
@@ -19,6 +19,9 @@ type Candidate = {
   current_company: string;
   source: string;
   privacy_notice_version: string;
+  consent_recorded_at?: string | null;
+  consent_withdrawn_at?: string | null;
+  merged_into?: string | null;
   current_ctc?: string | null;
   expected_ctc?: string | null;
   resumes: Resume[];
@@ -228,6 +231,32 @@ export default function Candidates() {
           <Panel title="Profile">
             <p className="text-sm">{selected.candidate_code} · {statusLabel(selected.source)}</p>
             <p className="text-sm text-muted">Notice {selected.privacy_notice_version}</p>
+            <p className="text-sm">
+              {selected.consent_withdrawn_at
+                ? "Consent withdrawn. The profile was not deleted."
+                : selected.consent_recorded_at
+                  ? "Consent recorded."
+                  : "No consent timestamp. Withdrawal is not available."}
+            </p>
+            {selected.merged_into && <p className="text-sm">This profile is an alias of another candidate.</p>}
+            {can("candidates.change_candidate") && selected.consent_recorded_at && !selected.consent_withdrawn_at && (
+              <button
+                type="button"
+                className={`${secondaryButton} mt-2`}
+                onClick={async () => {
+                  setError("");
+                  try {
+                    const response = await api.post<Candidate>(`/candidates/${selected.id}/withdraw-consent/`, {});
+                    setSelected(response.data);
+                    setNotice("Consent withdrawn. The profile was not deleted.");
+                  } catch (reason) {
+                    setError(errorMessage(reason, "Consent was not withdrawn."));
+                  }
+                }}
+              >
+                Withdraw consent
+              </button>
+            )}
             {can("candidates.view_candidate_compensation") && ("current_ctc" in selected || "expected_ctc" in selected) && (
               <p className="mt-2 text-sm">Current CTC {inr(selected.current_ctc)} · Expected CTC {inr(selected.expected_ctc)}</p>
             )}
@@ -235,7 +264,10 @@ export default function Candidates() {
             <ul className="text-sm">
               {(selected.resumes || []).map((item) => (
                 <li key={item.id} className="mt-1 flex items-center justify-between gap-2">
-                  <span>{item.original_filename} · v{item.version} · {statusLabel(item.parsing_status)}</span>
+                  <span>
+                    {item.original_filename} · v{item.version} · {statusLabel(item.parsing_status)}
+                    {item.parsing_status === "FAILED" ? " · background parse failed" : ""}
+                  </span>
                   {can("candidates.view_resume_content") && (
                     <button type="button" className={tinyButton} onClick={() => download(item.id)}>Download</button>
                   )}

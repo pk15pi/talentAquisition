@@ -2,14 +2,15 @@
 
 Recruitment management system for Synfowebs. Django REST Framework, PostgreSQL 16, React, Redis, and Celery.
 
-The GitHub default branch is **`master`**. `main` exists and points at the same commit as `master` when this packaging landed. Open pull requests against `master`. Phases 0–5 are on `master`. This repository's production packaging (Gunicorn, Nginx, non-root images, private resumes) is a separate pull request and stays unmerged until it is reviewed.
+The GitHub default branch is **`master`**. `main` exists and points at the same commit as `master` when packaging landed. Open pull requests against `master`. Phases 0–5 are on `master`. This branch keeps the unmerged production packaging (Gunicorn, Nginx, non-root images, private resumes) and stacks the completion work on it. Do not merge it without review.
 
 ## What is running today
 
-- Accounts, organizations, clients, sales opportunities (API only), jobs, candidates, skills, matching, applications, submissions, interviews, placements, billing, and reports.
+- Accounts, organizations, clients, sales opportunities, jobs, candidates, skills, matching, applications, submissions, interviews, placements, billing, and reports.
 - Django admin for those modules, gated by Django permissions. HR does not get invoice, payment, or placement-fee permissions, and does not get `candidates.view_resume_content` by default.
-- React workspace: login, dashboard, users, clients, job descriptions, candidates, duplicate review, applications, interviews, submissions, placements, billing, reports, and settings.
-- Resume files are private. `/media/` is not a public route. An authorized user with `candidates.view_resume_content` calls `POST /api/v1/resumes/{id}/download/` and then opens the short-lived `/api/v1/resume-downloads/?token=` path.
+- React workspace: login, dashboard, users, clients, opportunities, job descriptions, candidates, duplicate review, applications, interviews, submissions, placements, billing, reports, and settings.
+- Resume files are private. `/media/` is not a public route. An authorized user with `candidates.view_resume_content` calls `POST /api/v1/resumes/{id}/download/` and then opens the short-lived `/api/v1/resume-downloads/?token=` path. With `AWS_STORAGE_BUCKET_NAME` set, that path redirects to a short-lived object-storage URL. HR and Management do not have the permission by default.
+- React also has an opportunities screen. Duplicate review can approve without merging, or merge into a chosen surviving profile. Candidates can withdraw recorded consent. Retention runs from Celery beat when an administrator has set a period.
 
 This is deployable as a process. It is not a finished ATS. The gaps are listed at the end of this file.
 
@@ -229,17 +230,19 @@ Creating a candidate requires `consent_acknowledged: true` and `privacy_notice_v
 
 Resume upload: `POST /api/v1/candidates/{id}/upload-resume/` with multipart field `file` (PDF or DOCX, max 10 MB).
 
+Matching weights are skills 40, experience 25, responsibilities 15, location 10, and notice period 10. A missing mandatory skill is flagged. The engine does not shortlist or reject anyone.
+
+Duplicate approval does not merge. `POST /api/v1/duplicate-reviews/{id}/merge/` with `surviving_candidate_id` does. The other profile stays as an alias. Consent is not copied. Who may merge is `candidates.review_duplicate`.
+
+`POST /api/v1/candidates/{id}/withdraw-consent/` records withdrawal only when consent was actually stored. It does not delete the profile.
+
+Retention: `python manage.py enforce_retention`, or Celery beat (`beat` in both Compose files). A null period skips that category.
+
+Report filters: `date_from`, `date_to`, `status`, `client`, `job`, `recruiter`, `sales_executive`, `department`, `employee`.
+
 ## Still not production-complete
 
-Packaging does not close the product gaps:
-
-- Phase 6 end-to-end UI workflows are not in this tree beyond the existing Vitest file and the Phase 5 browser script.
-- Phase 7 report filters are not built. The three report endpoints are still all-time counts. HR financial figures stay zero unless `reports.view_financial_report` is granted.
-- A full Phase 8 testing expansion was not part of this packaging pass.
-- Duplicate approval records a decision and does not merge or delete the two profiles.
-- Retention days are editable and are not enforced by a deletion job.
-- Resume download and billing reads are not written to the audit log. Resumes are not malware-scanned.
-- There is no password reset, no refresh-token blacklist, and the browser still stores JWTs in `localStorage`.
-- Sales opportunity screens, department editing, and consent withdrawal are not built.
-- An administrator can still type an invoice header total that disagrees with the lines until the next line save. The API does not accept header totals.
+- Job sales-owner changes are not stored in a history table. Client credit uses ownership history. JD credit uses the current sales owner.
+- Department editing, password reset, and refresh-token blacklist are not built. The browser stores JWTs in `localStorage`.
+- Resumes are not malware-scanned.
 - HR was not granted placement create, placement financial fields, invoice access, or resume content. That split is unchanged.

@@ -2,6 +2,32 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-02 — Completion gaps, stacked on production packaging
+
+Stacked on `0c0c49f` (`cursor/phase-10-production-deploy-757a`). That commit's Gunicorn, Nginx, non-root images, Redis password, and signed object-storage redirect are kept. One migration was required for the duplicate-merge alias.
+
+### Added
+
+- `POST /api/v1/duplicate-reviews/{id}/merge/` with `surviving_candidate_id`. Approve still does not merge. The other profile stays as an alias (`merged_into`), consent is not copied, applications move, and a second active application for the same job aborts the merge.
+- `POST /api/v1/candidates/{id}/withdraw-consent/`. It refuses a profile that never recorded consent and does not delete the row.
+- `enforce_retention` Celery task, daily beat schedule, management command, and a `beat` service in both Compose files. Null retention periods do nothing.
+- Report query parameters: `date_from`, `date_to`, `status`, `client`, `job`, `recruiter`, `sales_executive`, `department`, `employee`. Client credit uses the owner at creation. Invoice credit, for callers who may see money, uses the owner at invoice time.
+- Opportunities page. Audit log list for `audit.view_auditlog`.
+- Audit rows for consent, merge, withdrawal, resume download (including the object-storage redirect), billing writes, retention, and a final resume-parse failure.
+
+### Changed
+
+- Django admin invoice subtotal, tax, and total are read-only and recomputed from lines. Admin payments and credit notes that exceed outstanding are rejected inside an invoice row lock.
+- Duplicate review screen has a separate merge control. Candidate screen can withdraw consent.
+
+### Migration
+
+`candidates.0004_candidate_alias_and_merge` adds `Candidate.merged_into`, `Candidate.merged_at`, and `CandidateMerge`. The alias has to survive audit-log retention, so the link cannot live only in `AuditLog`. No earlier migration was edited.
+
+### Verified
+
+Re-run after the rebase is recorded in `FINAL_DELIVERY_REPORT.md`. The pre-rebase run on Phase 5 was 98 tests, OK, on PostgreSQL 16.15, plus Vitest 13 and the headless Chrome script.
+
 ## 2026-11-02 — Production packaging (Phase 10 and deploy checks)
 
 Separate pull request into `master`. Left unmerged so the final audit agent can rebase or stack on it. No duplicate merge, no retention deletion, no Phase 6 end-to-end suite, and no Phase 7 report filters. No migration. Resume `FileField` keys are unchanged.

@@ -7,7 +7,7 @@ from apps.common import ModelActionPermission
 
 from .models import CreditNote, Invoice, InvoiceLine, Payment
 from .serializers import CreditNoteSerializer, InvoiceLineSerializer, InvoiceSerializer, PaymentSerializer
-from .services import remaining_capacity
+from .services import audit_billing, remaining_capacity
 
 
 class InvoiceViewSet(ModelViewSet):
@@ -17,11 +17,13 @@ class InvoiceViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         with transaction.atomic():
-            serializer.save(created_by=self.request.user)
+            invoice = serializer.save(created_by=self.request.user)
+            audit_billing(self.request.user, "invoice_saved", invoice, {"total": str(invoice.total), "created": True})
 
     def perform_update(self, serializer):
         with transaction.atomic():
-            serializer.save()
+            invoice = serializer.save()
+            audit_billing(self.request.user, "invoice_saved", invoice, {"total": str(invoice.total), "created": False})
 
 
 class InvoiceLineViewSet(ModelViewSet):
@@ -31,14 +33,32 @@ class InvoiceLineViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         with transaction.atomic():
-            serializer.save()
+            line = serializer.save()
+            audit_billing(
+                self.request.user,
+                "invoice_line_saved",
+                line,
+                {"invoice_id": str(line.invoice_id), "created": True},
+            )
 
     def perform_update(self, serializer):
         with transaction.atomic():
-            serializer.save()
+            line = serializer.save()
+            audit_billing(
+                self.request.user,
+                "invoice_line_saved",
+                line,
+                {"invoice_id": str(line.invoice_id), "created": False},
+            )
 
     def perform_destroy(self, instance):
         with transaction.atomic():
+            audit_billing(
+                self.request.user,
+                "invoice_line_deleted",
+                instance,
+                {"invoice_id": str(instance.invoice_id)},
+            )
             instance.delete()
 
 
@@ -53,7 +73,8 @@ class PaymentViewSet(ModelViewSet):
             amount = serializer.validated_data["amount"]
             if amount > remaining_capacity(invoice):
                 raise ValidationError("Payment cannot exceed the invoice outstanding amount.")
-            serializer.save(recorded_by=self.request.user)
+            payment = serializer.save(recorded_by=self.request.user)
+            audit_billing(self.request.user, "payment_saved", payment, {"invoice_id": str(invoice.pk), "amount": str(payment.amount)})
 
     def perform_update(self, serializer):
         with transaction.atomic():
@@ -61,7 +82,8 @@ class PaymentViewSet(ModelViewSet):
             amount = serializer.validated_data.get("amount", serializer.instance.amount)
             if amount > remaining_capacity(invoice, exclude_payment=serializer.instance):
                 raise ValidationError("Payment cannot exceed the invoice outstanding amount.")
-            serializer.save()
+            payment = serializer.save()
+            audit_billing(self.request.user, "payment_saved", payment, {"invoice_id": str(invoice.pk), "amount": str(payment.amount)})
 
 
 class CreditNoteViewSet(ModelViewSet):

@@ -19,7 +19,9 @@ export default function Dashboard() {
   const { can } = useAuth();
   const [stats, setStats] = useState<Overview | null>(null);
   const [error, setError] = useState("");
+  const [parseFailures, setParseFailures] = useState(0);
   const showOverview = can("reports.view_overview_report");
+  const showFailures = can("audit.view_auditlog");
 
   useEffect(() => {
     if (!showOverview) return;
@@ -28,6 +30,14 @@ export default function Dashboard() {
       .then((response) => setStats(response.data))
       .catch((reason) => setError(errorMessage(reason, "The overview report is not available.")));
   }, [showOverview]);
+
+  useEffect(() => {
+    if (!showFailures) return;
+    api
+      .get<{ count?: number }>("/audit-logs/", { params: { action: "resume_parse_failed" } })
+      .then((response) => setParseFailures(response.data.count ?? 0))
+      .catch(() => setParseFailures(0));
+  }, [showFailures]);
 
   const cards: { label: string; value: number | undefined }[] = [
     { label: "Active clients", value: stats?.clients },
@@ -45,6 +55,9 @@ export default function Dashboard() {
         description="Track clients, requirements and recruitment progress from one place."
       />
       {error && <Alert>{error}</Alert>}
+      {showFailures && parseFailures > 0 && (
+        <Alert>{parseFailures} resume parse failure{parseFailures === 1 ? "" : "s"} recorded. Open the candidate to see parsing status.</Alert>
+      )}
       {!showOverview && <Alert tone="info">Your account does not include the overview report.</Alert>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (

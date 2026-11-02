@@ -1,24 +1,38 @@
 # SynfoTalent development status
 
-Updated for the production-packaging pull request, 2026-11-02. Phases 0–5 are on `master` (Phase 5 merged as PR #5). This Phase 10 pull request is **not merged**. The final audit agent (`bc-c1e1b1b8-e2eb-58d3-ada9-2f6b07a7b414`) should rebase or stack on it. Do not merge it from that work without a review. GitHub's default branch is `master`. `main` matched `master` at `635cc4d` when this branch was cut.
+Updated 2026-11-02. Completion work is stacked on production packaging commit `0c0c49f` (`cursor/phase-10-production-deploy-757a`). That commit is kept: Gunicorn, Nginx, non-root images, Redis password, and signed object-storage redirects. Nothing here is merged. GitHub's default branch is `master`. The baseline written before the product fixes is `FINAL_AUDIT_BASELINE.md`. The delivery notes are `FINAL_DELIVERY_REPORT.md`.
+
+**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified.
+
+## Completion-gap pass
+
+- Duplicate merge is a separate endpoint from approve. The caller names the survivor. Sourcing and consent stay on each person. Applications, and therefore interviews, submissions, and placements, move. A skill the survivor already has stays on the alias. The other row is not deleted. Who may call merge is still `candidates.review_duplicate` because open question 9 was not answered.
+- Consent withdrawal sets `consent_withdrawn_at` and the consent-history `withdrawn_at`. A documented non-consent basis, which has no consent timestamp, is rejected. The profile is not deleted.
+- Retention runs from Celery beat and `manage.py enforce_retention`. A null period skips that category. Protected rows are skipped, not forced. Alias rows are kept. Beat is a service in both Compose files.
+- Admin invoice headers recompute from lines. Admin payments and credit notes cannot exceed outstanding, and the check holds the invoice lock.
+- Reports accept the filter set named in the Phase 0 brief. Client counts use creation ownership. Invoice amounts, when the caller has `reports.view_financial_report`, use the owner at `invoice.created_at`. JD counts still use the current sales owner. There is no job-owner history table.
+- Opportunities have a screen. Final resume-parse failures are audited. Users with `audit.view_auditlog` see the count on the dashboard. Resume downloads are audited, including the object-storage redirect from the packaging commit.
+
+The pre-rebase test numbers are in the changelog. Re-run results after this stack are in `FINAL_DELIVERY_REPORT.md`.
+
+Migration: `candidates.0004_candidate_alias_and_merge` only. Required for the alias pointer and the conflict record.
+
+Still open: department UI, password reset, malware scanning, a job sales-owner history table, a narrower merge permission than `candidates.review_duplicate`, and refresh-token blacklist. JWTs stay in `localStorage`.
+
+The production-packaging section below is the record of `0c0c49f`. Lines in it that say merge, retention, report filters, or consent withdrawal are absent were true for that commit and are replaced by the section above.
 
 **Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. This pull request packages the process. It does not close the product gaps below.
 
 ## Still not production-complete (product)
 
-Left out of this pull request on purpose:
+This list is what packaging commit `0c0c49f` left open. The completion-gap section at the top closes merge, retention enforcement, report filters, the opportunities screen, consent withdrawal, download and billing audit rows, and admin invoice header totals. These items from that commit are still open:
 
-- Phase 6 end-to-end UI workflows. Vitest and the Phase 5 Chrome script are the UI checks that exist.
-- Phase 7 report filters and productivity definitions. Reports are still all-time counts.
-- A full Phase 8 expansion. The Django suite and Vitest were extended only with deploy checks.
-- Duplicate profile merge. Approval records a decision and does not merge or delete profiles.
-- Retention deletion. Days can be stored and are not enforced.
-- Consent is never invented. A documented non-consent basis still has to be recorded by a person.
+- A full Phase 6 browser suite beyond Vitest, the Phase 5 script, and `frontend/scripts/verify-completion.mjs`.
+- Department editing, password reset, and refresh-token blacklist. JWTs stay in `localStorage`.
+- Malware scanning.
+- Job sales-owner history. Client ownership history is what reports use for client credit.
 - HR still has no placement financial permissions, no invoice permissions, and no `candidates.view_resume_content` by default.
-- Download and billing reads are still not written to `AuditLog`. Resumes are not malware-scanned.
-- No password reset and no refresh-token blacklist. JWTs stay in `localStorage`.
-- Sales opportunity screens, department editing, and consent withdrawal are still absent.
-- Admin invoice header totals can still be typed apart from the lines until the next line save.
+- Consent is never invented. A documented non-consent basis still has to be recorded by a person.
 
 `manage.py check --deploy` silences `security.W008` (HTTPS redirect is Nginx or the load balancer, so container health checks stay on HTTP) and `security.W021` (HSTS preload is opt-in via `DJANGO_HSTS_PRELOAD=1`).
 

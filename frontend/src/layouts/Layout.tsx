@@ -1,6 +1,7 @@
 import {
   BriefcaseBusiness,
   Building2,
+  Handshake,
   CalendarClock,
   ChartNoAxesCombined,
   FileText,
@@ -22,6 +23,7 @@ import { ROLE_LABELS, displayName } from "../auth/types";
 const ICONS: Record<string, LucideIcon> = {
   "/": LayoutDashboard,
   "/clients": Building2,
+  "/opportunities": Handshake,
   "/jobs": BriefcaseBusiness,
   "/candidates": Users,
   "/duplicates": ShieldAlert,

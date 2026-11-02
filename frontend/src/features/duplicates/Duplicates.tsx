@@ -5,10 +5,11 @@ import { usePaged } from "../../lib/usePaged";
 import { statusLabel } from "../../lib/workflow";
 import api from "../../services/api";
 
+type Person = { id: string; candidate_code: string; full_name: string };
 type Review = {
   id: string;
-  candidate: { id: string; candidate_code: string; full_name: string };
-  matched_candidate: { id: string; candidate_code: string; full_name: string };
+  candidate: Person;
+  matched_candidate: Person;
   match_type: string;
   status: string;
   notes: string;
@@ -19,6 +20,7 @@ export default function Duplicates() {
   const [status, setStatus] = useState("PENDING");
   const list = usePaged<Review>("/duplicate-reviews/", { status });
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [survivor, setSurvivor] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -34,12 +36,32 @@ export default function Duplicates() {
     }
   }
 
+  async function merge(review: Review) {
+    setError("");
+    setNotice("");
+    const surviving = survivor[review.id];
+    if (!surviving) {
+      setError("Choose the surviving profile before merging.");
+      return;
+    }
+    try {
+      await api.post(`/duplicate-reviews/${review.id}/merge/`, {
+        surviving_candidate_id: surviving,
+        notes: notes[review.id] || "",
+      });
+      setNotice("Profiles merged. The other row is kept as an alias. Consent was not copied.");
+      list.reload();
+    } catch (reason) {
+      setError(errorMessage(reason, "The profiles were not merged."));
+    }
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="DATA QUALITY"
         title="Duplicate review"
-        description="Approve or reject a possible duplicate. This records the decision and does not merge or delete either profile."
+        description="Approve or reject records the decision and does not merge or delete either profile. Merge is a separate action: choose the surviving profile. The other row is kept as an alias, and consent is not copied."
       />
       {error && <Alert>{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
@@ -75,10 +97,27 @@ export default function Duplicates() {
                   value={notes[review.id] || ""}
                   onChange={(event) => setNotes({ ...notes, [review.id]: event.target.value })}
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button type="button" className={primaryButton} onClick={() => decide(review, true)}>Approve</button>
                   <button type="button" className={secondaryButton} onClick={() => decide(review, false)}>Reject</button>
                 </div>
+                <Field label={`Surviving profile for ${review.candidate.full_name}`}>
+                  <Select
+                    aria-label={`Surviving profile for ${review.candidate.full_name}`}
+                    value={survivor[review.id] || ""}
+                    onChange={(event) => setSurvivor({ ...survivor, [review.id]: event.target.value })}
+                  >
+                    <option value="">Choose who remains active</option>
+                    {[review.candidate, review.matched_candidate].map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.full_name} ({person.candidate_code})
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <button type="button" className={secondaryButton} onClick={() => merge(review)}>
+                  Merge into surviving profile
+                </button>
               </div>
             ) : (
               review.notes && <p className="mt-2 text-sm">{review.notes}</p>

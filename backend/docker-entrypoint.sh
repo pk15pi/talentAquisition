@@ -31,6 +31,10 @@ case "${1:-web}" in
     wait_for_migrations
     exec celery -A config worker -l info
     ;;
+  beat)
+    wait_for_migrations
+    exec celery -A config beat -l info
+    ;;
   *)
     exec "$@"
     ;;

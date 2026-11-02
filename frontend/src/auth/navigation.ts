@@ -10,6 +10,7 @@ export type NavItem = {
 export const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", end: true, allow: () => true },
   { to: "/clients", label: "Clients", allow: (can) => can("clients.view_client") },
+  { to: "/opportunities", label: "Opportunities", allow: (can) => can("sales.view_salesopportunity") },
   { to: "/jobs", label: "Job descriptions", allow: (can) => can("jobs.view_job") },
   { to: "/candidates", label: "Candidates", allow: (can) => can("candidates.view_candidate") },
   { to: "/duplicates", label: "Duplicate review", allow: (can) => can("candidates.review_duplicate") },

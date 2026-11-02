@@ -92,6 +92,21 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  beat:
+    build: ./backend
+    image: synfotalent-backend:prod
+    command: ["beat"]
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
   web:
     build:
       context: .

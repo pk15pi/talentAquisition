@@ -12,6 +12,7 @@ import Interviews from "./features/interviews/Interviews";
 import Jobs from "./features/jobs/Jobs";
 import Placements from "./features/placements/Placements";
 import Reports from "./features/reports/Reports";
+import Opportunities from "./features/sales/Opportunities";
 import Settings from "./features/settings/Settings";
 import Submissions from "./features/submissions/Submissions";
 import Users from "./features/users/Users";
@@ -42,6 +43,7 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route index element={<Dashboard />} />
         <Route path="clients" element={<Permit allow={can("clients.view_client")}><Clients /></Permit>} />
+        <Route path="opportunities" element={<Permit allow={can("sales.view_salesopportunity")}><Opportunities /></Permit>} />
         <Route path="jobs" element={<Permit allow={can("jobs.view_job")}><Jobs /></Permit>} />
         <Route path="candidates" element={<Permit allow={can("candidates.view_candidate")}><Candidates /></Permit>} />
         <Route path="duplicates" element={<Permit allow={can("candidates.review_duplicate")}><Duplicates /></Permit>} />

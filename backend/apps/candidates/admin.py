@@ -1,5 +1,5 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 
@@ -169,6 +169,9 @@ class CandidateAdmin(SensitiveModelAdmin):
         "normalized_email",
         "normalized_phone",
         "sourced_by",
+        "consent_withdrawn_at",
+        "merged_into",
+        "merged_at",
         "created_at",
         "updated_at",
     )
@@ -192,10 +195,13 @@ class CandidateAdmin(SensitiveModelAdmin):
         "consent_recorded_at",
         "privacy_notice_version",
         "consent_withdrawn_at",
+        "merged_into",
+        "merged_at",
         "is_active",
         "created_at",
         "updated_at",
     )
+    actions = ("withdraw_recorded_consent",)
 
     def get_fields(self, request, obj=None):
         fields = list(super().get_fields(request, obj))
@@ -211,9 +217,24 @@ class CandidateAdmin(SensitiveModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         readonly = list(super().get_readonly_fields(request, obj))
+        readonly.extend(["consent_withdrawn_at", "merged_into", "merged_at"])
         if obj is not None:
             readonly.extend(["consent_recorded_at", "privacy_notice_version"])
         return tuple(dict.fromkeys(readonly))
+
+    @admin.action(description="Withdraw recorded consent without deleting the profile", permissions=["change"])
+    def withdraw_recorded_consent(self, request, queryset):
+        from apps.candidates.consent import withdraw_candidate_consent
+
+        done = 0
+        for candidate in queryset:
+            try:
+                withdraw_candidate_consent(candidate, request.user)
+                done += 1
+            except ValidationError as exc:
+                message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+                self.message_user(request, f"{candidate}: {message}", level=messages.WARNING)
+        self.message_user(request, f"Withdrew consent on {done} profile(s). Profiles were not deleted.")
 
     def get_exclude(self, request, obj=None):
         excluded = set(super().get_exclude(request, obj) or ())
@@ -226,6 +247,8 @@ class CandidateAdmin(SensitiveModelAdmin):
                     "sourced_by",
                     "normalized_email",
                     "normalized_phone",
+                    "merged_into",
+                    "merged_at",
                 }
             )
         return tuple(excluded) or None

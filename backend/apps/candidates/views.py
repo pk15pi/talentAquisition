@@ -32,7 +32,10 @@ class CandidateViewSet(ModelViewSet):
     queryset = Candidate.objects.prefetch_related("resumes", "candidate_skills__skill").all().order_by("-created_at")
     serializer_class = CandidateSerializer
     permission_classes = [IsAuthenticated, ModelActionPermission]
-    action_permissions = {"upload_resume": "candidates.add_resume"}
+    action_permissions = {
+        "upload_resume": "candidates.add_resume",
+        "withdraw_consent": "candidates.change_candidate",
+    }
 
     def perform_create(self, serializer):
         serializer.save(sourced_by=self.request.user)
@@ -78,6 +81,25 @@ class CandidateViewSet(ModelViewSet):
         parse_resume.delay(resume.id)
         return Response(ResumeSerializer(resume).data, status=201)
 
+    @action(detail=True, methods=["post"], url_path="withdraw-consent")
+    def withdraw_consent(self, request, pk=None, **kwargs):
+        from django.core.exceptions import PermissionDenied
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .consent import withdraw_candidate_consent
+
+        candidate = self.get_object()
+        notes = request.data.get("notes") or ""
+        try:
+            withdraw_candidate_consent(candidate, request.user, notes=notes)
+        except PermissionDenied as exc:
+            return Response({"detail": str(exc), "code": "permission_denied", "errors": None}, status=403)
+        except DjangoValidationError as exc:
+            message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            return Response({"detail": message, "code": "invalid", "errors": None}, status=400)
+        candidate.refresh_from_db()
+        return Response(self.get_serializer(candidate).data)
+
 
 class DuplicateReviewViewSet(ReadOnlyModelViewSet):
     queryset = DuplicateReview.objects.select_related("candidate", "matched_candidate", "reviewed_by").order_by(
@@ -89,6 +111,7 @@ class DuplicateReviewViewSet(ReadOnlyModelViewSet):
         "list": "candidates.review_duplicate",
         "retrieve": "candidates.review_duplicate",
         "decide": "candidates.review_duplicate",
+        "merge": "candidates.review_duplicate",
     }
 
     def get_queryset(self):
@@ -129,6 +152,49 @@ class DuplicateReviewViewSet(ReadOnlyModelViewSet):
         review.refresh_from_db()
         return Response(self.get_serializer(review).data)
 
+    @action(detail=True, methods=["post"])
+    def merge(self, request, pk=None, **kwargs):
+        """Merge is separate from decide(). The caller names the surviving profile."""
+        from django.core.exceptions import PermissionDenied
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .merge import merge_duplicate_review
+
+        review = self.get_object()
+        surviving = request.data.get("surviving_candidate_id")
+        if not surviving:
+            return Response(
+                {
+                    "detail": "surviving_candidate_id is required.",
+                    "code": "invalid",
+                    "errors": {"surviving_candidate_id": ["Choose the profile that remains active."]},
+                },
+                status=400,
+            )
+        try:
+            merge = merge_duplicate_review(
+                review,
+                request.user,
+                surviving,
+                notes=request.data.get("notes") or "",
+            )
+        except PermissionDenied as exc:
+            return Response({"detail": str(exc), "code": "permission_denied", "errors": None}, status=403)
+        except DjangoValidationError as exc:
+            message = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            return Response({"detail": message, "code": "invalid", "errors": None}, status=400)
+        review.refresh_from_db()
+        payload = self.get_serializer(review).data
+        payload["merge"] = {
+            "id": str(merge.pk),
+            "surviving_candidate_id": str(merge.surviving_candidate_id),
+            "alias_candidate_id": str(merge.alias_candidate_id),
+            "conflicts": merge.conflicts,
+            "consent_copied": False,
+            "alias_deleted": False,
+        }
+        return Response(payload)
+
 
 class ResumeDownloadLinkView(APIView):
     """Mint a short-lived signed URL. Does not return file bytes, hashes, or parsed text."""
@@ -139,6 +205,16 @@ class ResumeDownloadLinkView(APIView):
     def post(self, request, resume_id, **kwargs):
         resume = get_object_or_404(Resume, pk=resume_id)
         token = make_download_token(request.user, resume)
+        from apps.audit.services import record_audit, request_ip
+
+        record_audit(
+            user=request.user,
+            action="resume_download_link",
+            entity_type="candidates.Resume",
+            entity_id=resume.pk,
+            details={"candidate_id": str(resume.candidate_id)},
+            ip_address=request_ip(request),
+        )
         return Response(
             {
                 "download_path": download_path(token),
@@ -183,6 +259,19 @@ class ResumeSignedDownloadView(APIView):
         if resume is None or not resume.file:
             return Response({"detail": "Resume file was not found.", "code": "not_found", "errors": None}, status=404)
         filename = os.path.basename(resume.original_filename or "resume").replace('"', "").replace("\r", "").replace("\n", "")
+
+        def audit_download():
+            from apps.audit.services import record_audit, request_ip
+
+            record_audit(
+                user=user,
+                action="resume_downloaded",
+                entity_type="candidates.Resume",
+                entity_id=resume.pk,
+                details={"candidate_id": str(resume.candidate_id), "object_storage": bool(settings.RESUME_OBJECT_STORAGE)},
+                ip_address=request_ip(request),
+            )
+
         if settings.RESUME_OBJECT_STORAGE:
             try:
                 signed = resume.file.storage.url(
@@ -193,11 +282,13 @@ class ResumeSignedDownloadView(APIView):
             except Exception:
                 logger.exception("Could not sign resume %s", resume.pk)
                 return Response({"detail": "Resume file was not found.", "code": "not_found", "errors": None}, status=404)
+            audit_download()
             return HttpResponseRedirect(signed)
         try:
             handle = resume.file.open("rb")
         except FileNotFoundError:
             return Response({"detail": "Resume file was not found.", "code": "not_found", "errors": None}, status=404)
+        audit_download()
         return FileResponse(handle, as_attachment=True, filename=filename)
 
 

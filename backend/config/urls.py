@@ -26,6 +26,7 @@ api_patterns = [
     path("", include("apps.billing.urls")),
     path("", include("apps.matching.urls")),
     path("", include("apps.organizations.urls")),
+    path("", include("apps.audit.urls")),
     path("reports/overview/", OverviewReportView.as_view(), name="report-overview"),
     path("reports/hr/", HRReportView.as_view(), name="report-hr"),
     path("reports/sales/", SalesReportView.as_view(), name="report-sales"),

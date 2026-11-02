@@ -81,6 +81,7 @@ describe("role navigation", () => {
     expect(await screen.findByRole("link", { name: "Candidates" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Placements" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Billing" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Opportunities" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
     expect(screen.queryByText("Invoiced revenue")).not.toBeInTheDocument();
   });
@@ -221,7 +222,7 @@ describe("forms", () => {
     expect(screen.queryByLabelText("Default fee type")).not.toBeInTheDocument();
   });
 
-  it("decides a duplicate review without a merge action", async () => {
+  it("approves a duplicate review without merging, and merge is a separate control", async () => {
     http.get.mockResolvedValue(page([{
       id: "review-1",
       candidate: { id: "a", candidate_code: "SW-CAN-00001", full_name: "Asha Rao" },
@@ -233,9 +234,15 @@ describe("forms", () => {
     }]));
     renderPage(<Duplicates />);
     expect(await screen.findByText(/does not merge or delete/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /merge/i })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(http.post).toHaveBeenCalledWith("/duplicate-reviews/review-1/decide/", { approved: true, notes: "" });
+    expect(http.post).not.toHaveBeenCalledWith("/duplicate-reviews/review-1/merge/", expect.anything());
+    await userEvent.selectOptions(screen.getByLabelText(/Surviving profile for Asha Rao/i), "a");
+    await userEvent.click(screen.getByRole("button", { name: "Merge into surviving profile" }));
+    expect(http.post).toHaveBeenCalledWith("/duplicate-reviews/review-1/merge/", {
+      surviving_candidate_id: "a",
+      notes: "",
+    });
   });
 
   it("shows invoice totals as calculated figures and has no header total input", async () => {

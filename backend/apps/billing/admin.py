@@ -7,6 +7,7 @@ from apps.admin_access import NoDeleteMixin, perm
 from apps.placements.models import Placement
 
 from .models import CreditNote, Invoice, InvoiceLine, Payment
+from .services import audit_billing, recompute_invoice_totals, save_credit_within_capacity, save_payment_within_capacity
 
 
 def allowed_fk_queryset(request, field_name):
@@ -146,7 +147,7 @@ class InvoiceAdmin(BillingModelAdmin):
     ordering = ("-created_at",)
     list_select_related = ("client", "created_by")
     autocomplete_fields = ("client",)
-    readonly_fields = ("invoice_number", "created_by", "created_at")
+    readonly_fields = ("invoice_number", "created_by", "created_at", "subtotal", "tax_amount", "total")
     inlines = (InvoiceLineInline, PaymentInline, CreditNoteInline)
 
     @admin.display(description="Outstanding")
@@ -157,6 +158,8 @@ class InvoiceAdmin(BillingModelAdmin):
         if not obj.created_by_id:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+        recompute_invoice_totals(obj)
+        audit_billing(request.user, "invoice_saved", obj, {"total": str(obj.total), "source": "admin"})
 
     def save_formset(self, request, form, formset, change):
         inline = next(item for item in self.get_inline_instances(request) if item.model is formset.model)
@@ -167,12 +170,25 @@ class InvoiceAdmin(BillingModelAdmin):
                 raise ValidationError("You cannot add this billing record.")
             if not creating and not inline.has_change_permission(request):
                 raise ValidationError("You cannot change this billing record.")
-            if isinstance(obj, Payment) and not obj.recorded_by_id:
-                obj.recorded_by = request.user
-            if isinstance(obj, CreditNote) and not obj.created_by_id:
-                obj.created_by = request.user
-            obj.save()
+            if isinstance(obj, Payment):
+                if not obj.recorded_by_id:
+                    obj.recorded_by = request.user
+                if not save_payment_within_capacity(obj):
+                    raise ValidationError("Payment cannot exceed the invoice outstanding amount.")
+            elif isinstance(obj, CreditNote):
+                if not obj.created_by_id:
+                    obj.created_by = request.user
+                if not save_credit_within_capacity(obj):
+                    raise ValidationError("Credit note cannot exceed the invoice outstanding amount.")
+            else:
+                obj.save()
+            if isinstance(obj, Payment):
+                audit_billing(request.user, "payment_saved", obj, {"invoice_id": str(obj.invoice_id), "amount": str(obj.amount), "source": "admin"})
+            if isinstance(obj, CreditNote):
+                audit_billing(request.user, "credit_note_saved", obj, {"invoice_id": str(obj.invoice_id), "amount": str(obj.amount), "source": "admin"})
         formset.save_m2m()
+        if form.instance.pk:
+            recompute_invoice_totals(form.instance)
 
 
 @admin.register(InvoiceLine)
@@ -197,7 +213,9 @@ class PaymentAdmin(BillingModelAdmin):
     def save_model(self, request, obj, form, change):
         if not obj.recorded_by_id:
             obj.recorded_by = request.user
-        super().save_model(request, obj, form, change)
+        if not save_payment_within_capacity(obj):
+            raise ValidationError("Payment cannot exceed the invoice outstanding amount.")
+        audit_billing(request.user, "payment_saved", obj, {"invoice_id": str(obj.invoice_id), "amount": str(obj.amount), "source": "admin"})
 
 
 @admin.register(CreditNote)
@@ -213,4 +231,6 @@ class CreditNoteAdmin(BillingModelAdmin):
     def save_model(self, request, obj, form, change):
         if not obj.created_by_id:
             obj.created_by = request.user
-        super().save_model(request, obj, form, change)
+        if not save_credit_within_capacity(obj):
+            raise ValidationError("Credit note cannot exceed the invoice outstanding amount.")
+        audit_billing(request.user, "credit_note_saved", obj, {"invoice_id": str(obj.invoice_id), "amount": str(obj.amount), "source": "admin"})

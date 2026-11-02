@@ -38,6 +38,14 @@ class Candidate(models.Model):
     privacy_notice_version = models.CharField(max_length=64)
     consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    merged_into = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="aliases",
+    )
+    merged_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -47,6 +55,7 @@ class Candidate(models.Model):
             models.Index(fields=["normalized_phone"]),
             models.Index(fields=["location"]),
             models.Index(fields=["sourced_by"]),
+            models.Index(fields=["merged_into"]),
         ]
         constraints = [
             models.CheckConstraint(
@@ -216,3 +225,33 @@ class DuplicateReview(models.Model):
                 "records_merged": False,
             },
         )
+
+
+class CandidateMerge(models.Model):
+    """Durable record of an explicit merge. The alias row is not deleted.
+
+    AuditLog rows can be removed by audit retention. This row keeps the
+    surviving profile, the alias, and the field conflicts.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    review = models.ForeignKey(DuplicateReview, on_delete=models.PROTECT, related_name="merges")
+    surviving_candidate = models.ForeignKey(Candidate, on_delete=models.PROTECT, related_name="merges_as_survivor")
+    alias_candidate = models.ForeignKey(Candidate, on_delete=models.PROTECT, related_name="merge_as_alias")
+    conflicts = models.JSONField(default=list, blank=True)
+    consent_provenance = models.JSONField(default=dict, blank=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="candidate_merges",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["alias_candidate"], name="one_merge_record_per_alias"),
+            models.CheckConstraint(
+                condition=~Q(surviving_candidate=F("alias_candidate")),
+                name="merge_distinct_profiles",
+            ),
+        ]
