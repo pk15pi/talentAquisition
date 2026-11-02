@@ -2,6 +2,47 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-02 — Phase 4 APIs
+
+APIs only. No Phase 5 screens, no duplicate merge, no retention deletion, and no new migration. The pull request is https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged.
+
+### Added
+
+- `POST /api/v1/jobs/{id}/match/` runs the scorer for `jobs.run_match` and returns component scores, weights, alias matches, and `mandatory_skill_failure`. A missing mandatory skill is flagged and does not cap the score or change the application. The `MatchRun` is inserted only after scoring succeeds.
+- Application `change-status` accepts only the next pipeline step, or Rejected or Withdrawn, until Joined. Joined, Rejected, and Withdrawn do not move again. The admin form uses the same map.
+- `POST /api/v1/resumes/{id}/download/` and `GET /api/v1/resume-downloads/?token=` for users who hold `candidates.view_resume_content`. The token lasts 5 minutes and is checked again on download. `/media/` stays unrouted.
+- `GET /api/v1/duplicate-reviews/` and `POST /api/v1/duplicate-reviews/{id}/decide/`. Decide calls `decide()` and does not merge or delete profiles.
+- `GET/POST/PATCH /api/v1/submissions/` with the submission status map. New groups for HR, Team Lead, and Management include the submission permissions. Existing groups are not rewritten.
+- `GET/POST/PATCH /api/v1/interview-participants/`, gated by the interview view, add, and change permissions. Sales remain 403.
+- Placement create and update copy effective client/JD fee terms and derive expected revenue when the caller does not send it. HR still has no `add_placement` and no financial permissions.
+- `GET/POST/PATCH /api/v1/credit-notes/`. Invoice, line, payment, and credit-note writes lock the invoice. API totals come from lines. Outstanding subtracts payments and credit notes.
+- Sales opportunity API tests. Owner reassignment requires `sales.view_all_salesopportunity`. Expected value stays on the row the user is allowed to read.
+
+### Changed
+
+- The jobs screen "Find candidates" button calls the matcher and shows how many active candidates were scored. It does not shortlist or reject anyone.
+- Application responses include candidate, job, and recruiter names plus status history.
+
+### Migration
+
+None. No column was added or relaxed. Consent timestamps were not invented. The placement guarantee column stays non-null; 90 is used only when the client and the JD both leave guarantee empty.
+
+### Verified
+
+- `python manage.py test apps` on PostgreSQL 16.15: 78 tests, OK, 0 failures.
+- `python manage.py check`: no issues.
+- `python manage.py makemigrations --check --dry-run`: no changes.
+- `npm run build`: exit 0.
+- Headless Chrome: Team Lead sees "Matched 1 active candidate. Nobody was shortlisted or rejected automatically." Sales sees "You do not have permission to perform this action."
+
+### Not done
+
+- Duplicate profile merge.
+- Retention deletion.
+- Phase 5 React screens, including a match explanation panel and hiding Find candidates from users without `jobs.run_match`.
+- Admin invoice headers can still be typed apart from lines until the next line save.
+- Phase 7 report filters, Phase 9 hardening, and Phase 10 Gunicorn/Nginx.
+
 ## 2026-11-02 — Phase 3 review-fix follow-up pull request
 
 PR #2 was already merged, so the review fixes were not in `master`. They are in https://github.com/pk15pi/talentAquisition/pull/3, which was left unmerged. The verification below is the 2026-11-02 run.

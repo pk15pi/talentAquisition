@@ -1,16 +1,25 @@
 # SynfoTalent development status
 
-Updated after the Phase 3 review-fix follow-up, 2026-11-02. Phase 4 and later have not been started. PR #2 merged the first admin commit only. The review fixes, including `candidates.0003`, are in https://github.com/pk15pi/talentAquisition/pull/3 and are not in `master` until that pull request is merged. It was left unmerged.
+Updated for the Phase 4 API pull request, 2026-11-02. PR #3 is merged on `master`. Phase 4 is in https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged. Phase 5 React screens and later phases were not started.
 
-**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Foundation and schema work can be in place without the feature being complete. Phase 3 is an operator admin, not a React feature, so the product modules below stay incomplete under that rule even though the admin behavior is tested.
+**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. For this phase, frontend integration means the existing screens still work against the API. No new React screens were added. The jobs list now calls the matcher instead of leaving "Find candidates" disabled. Modules that still have no screen stay incomplete.
 
-**Tests that ran (review-fix follow-up, 2026-11-02)**
+**Tests that ran (Phase 4 APIs, 2026-11-02)**
 
 | Command | Result |
 | --- | --- |
-| `python manage.py test apps` against PostgreSQL 16 | 66 tests, OK, 0 failures |
+| `python manage.py test apps` against PostgreSQL 16.15 | 78 tests, OK, 0 failures |
 | `python manage.py check` | No issues |
 | `python manage.py makemigrations --check --dry-run` | No changes detected |
+| `npm run build` (`tsc -b && vite build`) | Exit 0 |
+
+No migration was added. Status maps, scoring, signed download tokens, commercial-term copying, and invoice totals are application behavior on the existing columns. `consent_recorded_at` was not changed. A placement guarantee stays the model default of 90 only when neither the client nor the JD has a guarantee; making that column nullable would have needed a migration and was not required to copy a value that exists. Invoice header totals typed in the admin can still disagree with lines until the next line save. The API does not accept header totals.
+
+Headless Chrome on the existing jobs page, user `leadbrowser` (Team Lead): "Find candidates" posted to the matcher and the page showed "Matched 1 active candidate. Nobody was shortlisted or rejected automatically." User `salesbrowser` (Sales) saw "You do not have permission to perform this action." Screenshots: `/opt/cursor/artifacts/screenshots/phase4-match-success.png`, `phase4-match-sales-denied.png`.
+
+The 2026-11-01 Chrome session still stands for the first admin pass: HR placement is view-only with no fee fields; HR invoice URL is 403; Management sees CTC `880011.22`, revenue `770022.33`, and invoice total `654321.09`.
+
+`candidates.0003_consent_evidence_optional_timestamp` remains the consent migration from PR #3. It is required so a documented non-consent basis can be stored without a fabricated consent timestamp. No earlier migration was edited.
 
 The 2026-11-01 Chrome session still stands for the first admin pass: HR placement is view-only with no fee fields; HR invoice URL is 403; Management sees CTC `880011.22`, revenue `770022.33`, and invoice total `654321.09`.
 
@@ -29,7 +38,7 @@ Staff users in the five `bootstrap_groups` groups see only the models their Djan
 - A removed role-group membership stays removed after login, a profile save, and `bootstrap_groups`. Only provisioning (`create_user`, `create_superuser`, the admin add form, and the user API create) adds the default role group, and it never removes other memberships.
 - Admin candidate creation requires a checked consent confirmation or a documented non-consent basis. It does not invent a consent time. `candidates.0003_consent_evidence_optional_timestamp` allows `consent_recorded_at` to be empty for that documented basis and rejects a withdrawal when no consent was recorded.
 
-**Not complete:** there is still no React admin, no signed resume download, and no Phase 4 matcher, billing-total, or transition work. Invoice header totals can still be typed separately from lines. Management is not granted department permissions; only a principal who holds `organizations` model permissions (the Administrator group, by default) can edit departments.
+**Not complete:** there is still no React admin and no Phase 5 screens. Invoice header totals can still be typed in the admin separately from lines; the API ignores those header fields and recomputes from lines. Management is not granted department permissions; only a principal who holds `organizations` model permissions (the Administrator group, by default) can edit departments.
 
 ## Verification evidence (Phase 3 browser)
 
@@ -43,7 +52,7 @@ Screenshots: `/opt/cursor/artifacts/screenshots/hr_placement_hides_financials.we
 
 ## Verification evidence (Phase 1–2 follow-up)
 
-Commands and results from that earlier environment. The suite then was 40 tests. The Phase 3 run above is 65 and includes those cases.
+Commands and results from that earlier environment. The suite then was 40 tests. The Phase 3 review-fix run was 66 and is included in the 78-test Phase 4 run.
 
 ## Phase 1–2 follow-up detail
 
@@ -120,12 +129,12 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Current implementation status:** Partial. API uses model permissions and `view_all_salesopportunity` for the full list. No frontend.
 - **Completed features:** None.
 - **Pending features:** Opportunity UI, stage history.
-- **Known bugs:** No automated test calls the opportunity API. Expected value is visible to anyone with `view_salesopportunity`. Sales have that permission for their own rows; management has the view-all permission.
-- **Tests executed:** None specific. The module loads and migrates with the suite.
-- **Tests passed:** n/a for this module.
+- **Known bugs:** Expected value is visible to anyone who can read the row. There is no separate expected-value permission. Sales see their own rows. A user with `sales.view_all_salesopportunity` sees every row. Sales cannot reassign `owner`; only `view_all_salesopportunity` can.
+- **Tests executed:** `apps/sales/tests/test_opportunities.py` inside the 78-test run. Sales create ignores a foreign owner, keeps expected value, and receives 404 for another owner's row. HR list is 403. Management sees both expected values and can reassign the owner.
+- **Tests passed:** Yes.
 - **Tests failed:** None.
 - **Security issues:** Grant `view_salesopportunity` only to people who should see expected value.
-- **Next development tasks:** Phase 4 tests and Phase 5 UI.
+- **Next development tasks:** Phase 5 opportunity UI.
 
 ## 6. Jobs
 
@@ -133,19 +142,19 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Current implementation status:** Partial. Create/view/assign are permission-based. Assignment writes `JobAssignmentHistory`. JD fee fields override client defaults (tested). `POST …/match/` is still broken.
 - **Completed features:** None. The JD screen can create a row and still calls match, which fails.
 - **Pending features:** Fix matching (Phase 4). Unassign. Assignment UI. Skill capture on the JD form.
-- **Known bugs:** **C1, still deferred as an engine fix.** `apps/matching/services.py` still has the Django 5.2 `iterator()` crash, and nothing calls it. `POST /api/v1/jobs/{id}/match/` returns HTTP 503 `matching_unavailable` and does not insert a `MatchRun` (tested). The jobs screen shows a disabled "Find candidates" button.
-- **Tests executed:** HR cannot see an unassigned JD (404). Team lead can. Assigning HR writes success. Assigning a sales user returns 400. Sales match returns 403. Commercial override unit behavior.
+- **Known bugs:** None in the match request path. The jobs screen shows a one-line result, not the explanation panel.
+- **Tests executed:** HR cannot see an unassigned JD (404) and that 404 does not insert a `MatchRun`. Team lead `POST /api/v1/jobs/{id}/match/` returns 200, one completed run, and no resume text or file hash. Sales match returns 403 and does not insert a run. Assigning HR writes success. Assigning a sales user returns 400. Commercial override unit behavior.
 - **Tests passed:** Yes.
-- **Tests failed:** None. Match success was not tested, on purpose.
+- **Tests failed:** None.
 - **Security issues:** Match, once fixed, still returns candidate names to whoever has `jobs.run_match`.
-- **Next development tasks:** Phase 4 matcher: pass `chunk_size` or drop `iterator()`, score weights and `SkillAlias`, do not leave an orphan run on failure.
+- **Next development tasks:** Phase 5 match explanation panel. Hide the button for users without `jobs.run_match`.
 
 ## 7. Candidates and resumes
 
 - **Module name:** Candidates, resumes, notes, consent
 - **Current implementation status:** Partial. A profile cannot be stored without consent and a privacy-notice version. The candidate form sends both, and that was exercised in headless Chrome (screenshots 03–05). Duplicate email/phone opens a `DuplicateReview` and does not merge. Resume file, `parsed_text`, and `file_hash` are not API fields. `current_ctc` and `expected_ctc` are returned only with `candidates.view_candidate_compensation` (management and administrators by default, not HR). Django admin hides those fields, and resume content fields, unless the viewer has the matching permission. The Phase 3 admin also hides them on the candidate page, the resume inline, and the changelist. `/media/` stays unrouted. Approving a duplicate review from the admin calls `decide()` and does not merge.
-- **Completed features:** None. There is no download, no review screen, and upload was not retested against a live Celery worker.
-- **Pending features:** Signed download, malware scan, review UI, consent withdrawal API. A future merge, not built here, must pick a surviving profile, keep each person's sourcing and consent, relink applications, interviews, and submissions, keep the other row as an audited alias rather than deleting it, record field conflicts, and log actor, time, source, and destination. One person's consent is not consent for the other.
+- **Completed features:** None under the full product rule. The signed download and duplicate-review APIs are tested. There is still no review screen, and upload was not retested against a live Celery worker.
+- **Pending features:** Malware scan, review UI, consent withdrawal API. A future merge, not built here, must pick a surviving profile, keep each person's sourcing and consent, relink applications, interviews, and submissions, keep the other row as an audited alias rather than deleting it, record field conflicts, and log actor, time, source, and destination. One person's consent is not consent for the other. `POST /api/v1/resumes/{id}/download/` requires `candidates.view_resume_content` and returns a path under `/api/v1/resume-downloads/?token=`, not `/media/`. The token lasts 5 minutes. Redeeming it loads that user again and checks the same permission before streaming the file. HR and Management do not have `view_resume_content` by default. `GET` and `POST /api/v1/duplicate-reviews/` use `candidates.review_duplicate`. `POST …/decide/` calls `decide()`. Approval does not merge or delete either profile.
 - **Known bugs:** Phone normalization is still "keep digits", so `+91…` and a national number do not match. Empty email and phone do not open a review (tested). Upload still calls Celery after the row is saved.
 - **Tests executed:** The consent and duplicate tests above, plus `test_resume_privacy`: sales 403, HR payload has no resume content or CTC, management sees CTC but not resume content, upload response has no storage path or parsed text, `/media/` 404, staff HR admin HTML omits `parsed_text`, file hash, file input, and CTC. Browser script saved `SW-CAN-00001` only after the consent box was checked.
 - **Tests passed:** Yes.
@@ -156,24 +165,24 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 8. Skills and matching
 
 - **Module name:** Skills and rule-based matching
-- **Current implementation status:** Models migrated, including `SkillAlias`. The scorer is unchanged and still crashes. No skill UI.
-- **Completed features:** None.
-- **Pending features:** Use aliases and weights. Score responsibilities from real data. Return the explanation. Fix C1.
-- **Known bugs:** C1, described under Jobs. Alias JSON and `SkillAlias` are both stored. The service reads neither.
-- **Tests executed:** Two aliases that normalize to `js` violate the unique constraint.
+- **Current implementation status:** Partial. `run_matching` iterates with `iterator(chunk_size=200)` after `prefetch_related`, which is the Django 5.2 requirement. Scores use weights skills 40, experience 25, responsibilities 15, location 10, notice period 10. Skill tokens include `normalized_name`, the JSON alias list, and `SkillAlias` rows. Responsibility score is token overlap between `jd_text` and parsed resume text, and the explanation lists only terms that also appear in the JD. A missing mandatory skill sets `mandatory_skill_failure` and `missing_mandatory_skills`. It does not cap the total at 49 and it does not change application status. The `MatchRun` row is inserted only after scoring finishes, inside one transaction. Engine version on new runs is `rules-v2`. No skill UI.
+- **Completed features:** None under the full product rule. The API and tests for this scorer passed.
+- **Pending features:** A results screen. Malware scanning before parsed text is trusted.
+- **Known bugs:** None reproduced in the match tests. Responsibility score is 0 when the JD or the resume has no comparable words.
+- **Tests executed:** Alias match scores 75 skill / 90 overall. A candidate missing the mandatory skill scores 60, which is above the old cap of 49, and `mandatory_skill_failure` is true. Inactive candidates are skipped. A raised scoring error leaves `MatchRun` count unchanged. Two aliases that normalize to `js` still violate the unique constraint.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
-- **Security issues:** Same as the match endpoint.
-- **Next development tasks:** Phase 4 only. Do not call the engine done.
+- **Security issues:** Match responses include candidate names and skill names for whoever has `jobs.run_match`. They do not include resume text, file hashes, or CTC.
+- **Next development tasks:** Phase 5 explanation panel. Do not treat the missing screen as a reason to call the engine unfinished.
 
 ## 9. Applications and pipeline
 
 - **Module name:** Applications and pipeline
 - **Current implementation status:** Partial. One active row per candidate and JD. `REJECTED` and `WITHDRAWN` release the slot and stay in the table. `JOINED` does not release it. Status and recruiter are not writable through PATCH. The screen can still create a row and still shows ids, with no status buttons.
 - **Completed features:** None under the full product rule. The re-apply rule is tested through the API.
-- **Pending features:** Pipeline UI that calls `change-status` and shows names. Legal transition map (any status is still accepted by `change-status`).
-- **Known bugs:** `change-status` does not restrict the graph. A client can jump from Identified to Joined. Tested only as "joined still blocks a second row", not as a forbidden jump.
-- **Tests executed:** Create ignores a submitted `JOINED` status and stores Identified. Reject then create a second application. A third active row is 400. Joined plus another create is 400. PATCH cannot change recruiter or status.
+- **Pending features:** Pipeline UI that calls `change-status`. The API already returns `candidate_name`, `job_title`, `recruiter_name`, and history.
+- **Known bugs:** None in the legal map. The map is one step along Identified, Contacted, Interested, Shortlisted, Submitted, Client Review, Interview, Selected, Offered, Joined. From any status before Joined the caller may also set Rejected or Withdrawn. Joined, Rejected, and Withdrawn have no outgoing move. The same map is enforced on the admin form.
+- **Tests executed:** Create ignores a submitted `JOINED` status and stores Identified. Reject then create a second application. A third active row is 400. Identified to Joined is 400 `invalid_transition` and writes no history. Walking the legal steps to Joined still blocks a second row, and Joined to Rejected stays Joined. Withdrawn frees the slot and a new application is 201. PATCH cannot change recruiter or status. The admin form refuses Identified to Submitted and records Identified to Contacted.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
 - **Security issues:** Anyone with `applications.change_application` can set any status. HR and team lead have that permission by default.
@@ -182,55 +191,55 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 10. Recruitment submissions
 
 - **Module name:** Client submissions
-- **Current implementation status:** Model only, now with a UUID primary key. No API and no UI.
-- **Completed features:** None.
-- **Pending features:** Submission workflow.
-- **Known bugs:** None executed.
-- **Tests executed:** Table is created by migrate. No behavior test.
-- **Tests passed:** n/a.
+- **Current implementation status:** Partial. `GET/POST/PATCH /api/v1/submissions/` uses `recruitment.view_submission`, `add_submission`, and `change_submission`. HR, Team Lead, and Management receive those on a new group. Sales does not. An existing database keeps its group edits until an administrator grants the three permissions or runs `bootstrap_groups --reset`. Create always stores `PENDING` and the current user as `submitted_by`. The resume must belong to the application's candidate. Later moves are PENDING to Acknowledged, Rejected, or Withdrawn; Acknowledged to Shortlisted, Rejected, or Withdrawn; Shortlisted to Rejected or Withdrawn. The application status is not changed. Delete stays 403.
+- **Completed features:** None. There is no submission screen.
+- **Pending features:** Submission UI.
+- **Known bugs:** None found in the API test.
+- **Tests executed:** Sales list 403. HR create ignores a submitted Shortlisted status and a foreign `submitted_by`. A resume from another candidate is 400. PENDING to Shortlisted is 400. PENDING to Acknowledged is 200. Delete is 403 and the row remains. The application stays Identified.
+- **Tests passed:** Yes.
 - **Tests failed:** None.
-- **Security issues:** None beyond the missing feature.
-- **Next development tasks:** Phase 4.
+- **Security issues:** The list is limited to applications the user can already see.
+- **Next development tasks:** Phase 5 submission screen.
 
 ## 11. Interviews
 
 - **Module name:** Interviews
 - **Current implementation status:** Partial. UUID primary key, participant rows, and an event row on create and on date/result change. The API requires `interviews.view_interview`. Sales do not have it by default.
-- **Completed features:** None. No interview screen. Participants have no API.
-- **Pending features:** Participant API, reschedule UI, linking a result to the application without auto-reject.
+- **Completed features:** None. No interview screen. `GET/POST /api/v1/interview-participants/` is tested. List and retrieve use `interviews.view_interview`. Create uses `interviews.add_interview`. Update uses `interviews.change_interview`. Sales without `view_interview` receive 403. The interview payload includes the participant rows.
+- **Pending features:** Reschedule UI, linking a result to the application without auto-reject.
 - **Known bugs:** Interviewer is still a free-text field plus an unused participant table. `ON_HOLD` remains an extra result.
-- **Tests executed:** Creating an interview writes `CREATED`. Changing the date writes `RESCHEDULED`. Sales `GET /interviews/` is 403. HR receives 200 and the feedback text.
+- **Tests executed:** Creating an interview writes `CREATED`. Changing the date writes `RESCHEDULED`. Sales `GET /interviews/` and `GET /interview-participants/` are 403. HR receives 200 and the feedback text, can add a user participant and a named participant, and a second row for the same user is 400. The interview detail includes both participants.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
 - **Security issues:** The old "any logged-in user can read feedback" hole is closed for the default sales group. Anyone later granted `view_interview` or `view_all_interviews` can read feedback. That is the permission model.
-- **Next development tasks:** Phase 4 participant API. Phase 5 UI.
+- **Next development tasks:** Phase 5 interview UI.
 
 ## 12. Placements
 
 - **Module name:** Placements
 - **Current implementation status:** Partial. List is ordered. Commercial fields are removed from the JSON unless the user has `placements.view_placement_financials`. Writes of those fields require `change_placement_financials`. HR has `view_placement` only. In the admin, HR opens the placement as a view-only page with no CTC, fee, revenue, or guarantee fields. Creating a placement in the admin also requires `change_placement_financials`, because those columns are required on the model. Placements are not deleted from the admin.
 - **Completed features:** None. No placement screen.
-- **Pending features:** Copy effective client/JD terms into the placement instead of the field default of 90 guarantee days. That 90 is still on the model and is not the retention setting.
+- **Pending features:** A placement screen. Create and update copy `fee_type`, `fee_value`, and `guarantee_period_days` from `Job.effective_commercial_terms()` when the caller omits them. JD values still override client defaults. Expected revenue is `offered_ctc * fee / 100` for a percentage and the fee amount for a fixed fee, unless the caller sends `expected_revenue`. The model default of 90 guarantee days remains only when neither the client nor the JD sets one. That 90 is still not the retention setting. HR was not granted `add_placement`.
 - **Open question for the owner (not changed in this follow-up):** Can HR create a placement? Today the HR Executive group has `placements.view_placement` only. It does not have `placements.add_placement`, `placements.change_placement`, `placements.view_placement_financials`, or `placements.change_placement_financials`. So HR cannot create a placement (POST returns 403, tested) and a placement they can read omits `offered_ctc`, `agreed_fee_type`, `agreed_fee_value`, `expected_revenue`, and `guarantee_period_days`. Invoice list is also 403. A proposed split, if you want HR to record operational placements, is to grant `placements.add_placement` and `placements.change_placement` for status and joining date only, keep the two financial permissions off HR, and make CTC/fee nullable until someone with `change_placement_financials` sets them. That model change is waiting on your answer.
-- **Known bugs:** Expected revenue is still whatever the client sends. HR cannot see the amounts and also cannot create a placement, because create requires the financial permission in the serializer and HR lacks `add_placement`.
-- **Tests executed:** HR detail response omits CTC, fee, and revenue and still shows status. HR invoice list is 403. Management sees `1200000.00` and `100000.00`.
+- **Known bugs:** HR cannot see the amounts and also cannot create a placement, because create sets commercial fields and HR lacks `add_placement` and `change_placement_financials`. A caller with `change_placement_financials` can still send an explicit expected revenue that differs from the derived figure.
+- **Tests executed:** HR detail response omits CTC, fee, and revenue and still shows status. HR create is 403 and HR still lacks `add_placement`. Management sees `1200000.00` and `100000.00`. A create with only offered CTC copies a 10% client fee, guarantee 45, and derives revenue `100000.00`. A JD fixed fee of `50000` and guarantee 30 override the client. An explicit expected revenue is kept. A client and JD with no fee terms return 400 and do not insert a placement. Updating offered CTC recalculates revenue when expected revenue is omitted.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
 - **Security issues:** Finance visibility is permission-based. Grant the two placement financial permissions explicitly. They are on Management and Administrator by default, not HR.
-- **Next development tasks:** Phase 4 fee calculation. Phase 5 UI.
+- **Next development tasks:** Phase 5 placement UI.
 
 ## 13. Billing
 
 - **Module name:** Billing
-- **Current implementation status:** Partial. Invoice, line, payment, and credit-note rows use the permission tables. HR is 403 on invoices in the API and in the admin. A credit note number is sequenced (`SW-CN-{year}-`). Header totals must be non-negative. There is still no credit-note API and no billing UI. Admin can record lines, payments, and credit notes for someone who holds the billing permissions, and it cannot delete those rows. Header totals can still disagree with lines.
+- **Current implementation status:** Partial. Invoice, line, payment, and credit-note rows use the permission tables. HR is 403 on invoices and on `GET /api/v1/credit-notes/` in the API, and on invoices in the admin. A credit note number is sequenced (`SW-CN-{year}-`). Header totals must be non-negative. `POST/PATCH /api/v1/credit-notes/` checks `billing.add_creditnote` and `billing.change_creditnote`. Create, line, payment, and credit-note writes run inside a transaction and lock the invoice. API clients cannot set `subtotal`, `tax_amount`, or `total`; line saves recompute them. Outstanding is total minus payments minus credit notes. Status becomes PAID when that outstanding is zero and the total is positive, PART_PAID when any payment or credit exists and a balance remains, and VOID is left alone. Paid and part-paid cannot be posted as a status. There is still no billing UI. Admin can record lines, payments, and credit notes for someone who holds the billing permissions, and it cannot delete those rows. An admin user can still type a header total that disagrees with the lines until the next line save.
 - **Completed features:** None.
-- **Pending features:** Credit-note endpoints, deriving totals only from lines, payment/credit races, tax configuration.
-- **Known bugs:** Header totals can still disagree with lines (no new test). Payment status still ignores credit notes. Those stayed out of Phase 2 on purpose.
-- **Tests executed:** HR cannot list invoices. Management can. A management user whose groups are cleared is 403 until `billing.view_invoice` is granted directly, while `role` stays `MANAGEMENT`. Credit-note number prefix via the ORM.
+- **Pending features:** Tax configuration, and stopping the admin form from storing a header total that has no lines. Payment and credit races are reduced by `select_for_update` on the invoice. A credit that fails after insert is rolled back with the invoice lock.
+- **Known bugs:** Admin header totals can still disagree with lines until a line is saved. The API path does not.
+- **Tests executed:** HR cannot list invoices or credit notes. Management can. A management user whose groups are cleared is 403 until `billing.view_invoice` is granted directly, while `role` stays `MANAGEMENT`. Posted header totals of `10000.00` are stored as `0.00` until a line is added. Two units at `1000.00` with 18% tax become subtotal `2000.00`, tax `360.00`, total `2360.00`. Raising a `1000.00` payment to `1500.00` is allowed and leaves `860.00` outstanding. A credit note for `860.00` marks the invoice PAID. A further credit is 400. A credit whose status update raises is rolled back. Credit-note number prefix via the ORM still matches `SW-CN-{year}-`.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
 - **Security issues:** Invoice access is no longer a hardcoded role list. The role label alone does not grant it (tested).
-- **Next development tasks:** Phase 4 billing service inside a transaction.
+- **Next development tasks:** Phase 5 billing UI. Phase 9 can still audit billing reads.
 
 ## 14. Reports
 
@@ -264,12 +273,12 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Current implementation status:** Partial. `npm run build` succeeds. Axios refreshes the access token once after a 401. The candidate form requires consent and a notice version. Tailwind is still not installed. No component tests.
 - **Completed features:** None.
 - **Pending features:** The Phase 5 page list. Role-aware navigation. Pagination controls. Hiding Match for users without `jobs.run_match`.
-- **Known bugs:** Match button still calls the broken endpoint for users who have the permission. Applications still show raw ids. Reports still render JSON.
-- **Tests executed:** `npm run build` exit 0. No browser session. No Vitest.
+- **Known bugs:** The jobs page calls the working matcher and shows only the candidate count. It does not hide the button from users without `jobs.run_match`; those users see the API's permission error. Applications still show raw ids even though the payload now includes names. Reports still render JSON.
+- **Tests executed:** `npm run build` exit 0. Headless Chrome: Team Lead match notice and Sales permission error, described at the top of this file. No Vitest.
 - **Tests passed:** The production build.
 - **Tests failed:** None in that command.
 - **Security issues:** Tokens remain in `localStorage`.
-- **Next development tasks:** Phase 5, after Phase 4 stops the match crash.
+- **Next development tasks:** Phase 5 pages. The match request no longer returns 503.
 
 ---
 
@@ -281,12 +290,13 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 | Groups and permissions | Yes | No admin UI | Yes | No |
 | JWT refresh | Endpoint yes | Interceptor written, not browser-tested | Endpoint yes | No |
 | Clients and commercial defaults | Yes | List/create only | Yes for scope, contact denial, terms | No |
-| JD assignment and visibility | Yes | Create and match button | Yes, except a successful match | No |
-| Consent and duplicate review | Yes | Consent fields on the form | API and model yes; browser no | No |
-| One active application | Yes | Create only | Yes | No |
-| Interviews | Yes, sales blocked | No page | Yes | No |
-| Placement and invoice visibility | Yes, including Django admin | No pages | Yes | No |
-| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, admin tests inside the 65 | No |
+| JD assignment and visibility | Yes | Create and match button | Yes, including a successful match | No |
+| Consent and duplicate review | Yes, including decide API | Consent fields on the form; no review screen | API and model yes; consent browser check is from the earlier session | No |
+| One active application and legal transitions | Yes | Create only | Yes | No |
+| Interviews and participants | Yes, sales blocked | No page | Yes | No |
+| Placement terms and invoice visibility | Yes, including Django admin | No pages | Yes | No |
+| Django admin for the core modules | Yes, permission-gated | Not a React page | Yes, admin tests inside the 78 | No |
 | Retention settings | Yes | No page | Yes | No |
-| Matching engine | Crashes (C1) | Button calls it | Alias uniqueness only | No |
-| Submissions, billing workflows, filtered reports | Missing or model-only | No | Little or none | No |
+| Matching engine | Scores and explains; no auto-decision | Button calls it and shows the count | Yes | No |
+| Submissions and credit notes | API yes | No | Yes | No |
+| Filtered reports | Missing filters | JSON dump | Overview financial zero for HR only | No |

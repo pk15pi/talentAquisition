@@ -19,6 +19,7 @@ api_patterns = [
     path("", include("apps.jobs.urls")),
     path("", include("apps.candidates.urls")),
     path("", include("apps.applications.urls")),
+    path("", include("apps.recruitment.urls")),
     path("", include("apps.interviews.urls")),
     path("", include("apps.placements.urls")),
     path("", include("apps.billing.urls")),

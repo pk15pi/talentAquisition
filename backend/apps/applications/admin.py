@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 
 from apps.access import visible_applications
@@ -5,6 +6,26 @@ from apps.admin_access import HistoryInlineMixin, NoDeleteMixin, ParentInlineMix
 from apps.recruitment.models import Submission
 
 from .models import Application, ApplicationHistory
+from .services import allowed_status_transitions
+
+
+class ApplicationAdminForm(forms.ModelForm):
+    class Meta:
+        model = Application
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        new_status = cleaned.get("status")
+        if self.instance.pk and new_status:
+            old_status = Application.objects.filter(pk=self.instance.pk).values_list("status", flat=True).first()
+            allowed = allowed_status_transitions(old_status) if old_status else set()
+            if old_status and old_status != new_status and new_status not in allowed:
+                allowed_text = ", ".join(sorted(allowed)) if allowed else "none"
+                raise forms.ValidationError(
+                    f"Cannot move an application from {old_status} to {new_status}. Allowed: {allowed_text}."
+                )
+        return cleaned
 
 
 class ApplicationHistoryInline(HistoryInlineMixin, admin.TabularInline):
@@ -28,6 +49,7 @@ class SubmissionInline(ParentInlineMixin, admin.TabularInline):
 
 @admin.register(Application)
 class ApplicationAdmin(NoDeleteMixin, admin.ModelAdmin):
+    form = ApplicationAdminForm
     list_display = ("application_code", "candidate", "job", "recruiter", "status", "created_at")
     list_filter = ("status",)
     search_fields = (

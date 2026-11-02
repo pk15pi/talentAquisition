@@ -7,6 +7,8 @@ from rest_framework.viewsets import ModelViewSet
 
 from apps.access import user_has, visible_jobs
 from apps.common import ModelActionPermission
+from apps.matching.serializers import MatchRunSerializer
+from apps.matching.services import run_matching
 
 from .models import Job, JobAssignment, JobAssignmentHistory, JobStatusHistory
 from .serializers import JobSerializer
@@ -112,13 +114,6 @@ class JobViewSet(ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def match(self, request, pk=None, **kwargs):
-        # The engine still crashes on Django 5.2. Keep it out of the request path until Phase 4.
-        self.get_object()
-        return Response(
-            {
-                "detail": "Candidate matching is unavailable until the scoring engine is finished.",
-                "code": "matching_unavailable",
-                "errors": None,
-            },
-            status=503,
-        )
+        job = self.get_object()
+        run = run_matching(job, request.user)
+        return Response(MatchRunSerializer(run).data)

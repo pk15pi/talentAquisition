@@ -100,7 +100,7 @@ class ResumePrivacyTests(SynfoAPITestCase):
         self.assertNotIn(b"current_ctc", candidate_page.content)
         self.assertNotIn(SECRET_CTC.encode(), candidate_page.content)
 
-    def test_match_does_not_run_or_leak_candidate_resume_data(self):
+    def test_match_runs_without_leaking_resume_data(self):
         job = make_job(make_client(self.sales, "Match Co"), self.sales, "Match JD")
         self.lead.groups  # touch
         before = MatchRun.objects.count()
@@ -108,9 +108,11 @@ class ResumePrivacyTests(SynfoAPITestCase):
         # HR is not assigned, so the job is outside their queryset.
         hidden = self.client.post(f"/api/v1/jobs/{job.id}/match/")
         self.assertEqual(hidden.status_code, 404)
-        self.as_user(self.lead)
-        unavailable = self.client.post(f"/api/v1/jobs/{job.id}/match/")
-        self.assertEqual(unavailable.status_code, 503)
-        self.assertEqual(unavailable.data["code"], "matching_unavailable")
-        self.assertNotIn(SECRET_TEXT, str(unavailable.data))
         self.assertEqual(MatchRun.objects.count(), before)
+        self.as_user(self.lead)
+        matched = self.client.post(f"/api/v1/jobs/{job.id}/match/")
+        self.assertEqual(matched.status_code, 200, matched.data)
+        self.assertNotEqual(matched.data.get("code"), "matching_unavailable")
+        self._assert_no_resume_secrets(matched.data)
+        self.assertEqual(MatchRun.objects.filter(job=job, completed_at__isnull=False).count(), 1)
+        self.assertEqual(matched.data["candidates_processed"], 1)

@@ -553,16 +553,21 @@ class AdminPermissionTests(SynfoAPITestCase):
         application_payload = admin_form_payload(application_admin, hr_user, self.application)
         application_payload["status"] = "SUBMITTED"
         application_payload["recruiter"] = str(self.lead.pk)
+        refused = hr.post(f"/admin/applications/application/{self.application.pk}/change/", application_payload)
+        self.assertEqual(refused.status_code, 200)
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.status, "IDENTIFIED")
+        application_payload["status"] = "CONTACTED"
         response = hr.post(f"/admin/applications/application/{self.application.pk}/change/", application_payload)
         self.assertEqual(response.status_code, 302, response.content[:1000])
         self.application.refresh_from_db()
-        self.assertEqual(self.application.status, "SUBMITTED")
+        self.assertEqual(self.application.status, "CONTACTED")
         self.assertEqual(self.application.recruiter_id, self.hr.id)
         self.assertTrue(
             ApplicationHistory.objects.filter(
                 application=self.application,
                 old_status="IDENTIFIED",
-                new_status="SUBMITTED",
+                new_status="CONTACTED",
                 changed_by=self.hr,
             ).exists()
         )
