@@ -4,7 +4,7 @@ All notable changes to SynfoTalent are recorded here. The format is based on Kee
 
 ## 2026-11-02 — Phase 4 APIs
 
-APIs only. No Phase 5 screens, no duplicate merge, no retention deletion, and no new migration. The pull request into `master` was left unmerged. The PR link is recorded in `DEVELOPMENT_STATUS.md` after the pull request exists.
+APIs only. No Phase 5 screens, no duplicate merge, no retention deletion, and no new migration. The pull request is https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged.
 
 ### Added
 

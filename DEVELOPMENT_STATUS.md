@@ -1,6 +1,6 @@
 # SynfoTalent development status
 
-Updated for the Phase 4 API pull request, 2026-11-02. PR #3 is merged on `master`. This branch adds the Phase 4 APIs and leaves the pull request unmerged. Phase 5 React screens and later phases were not started.
+Updated for the Phase 4 API pull request, 2026-11-02. PR #3 is merged on `master`. Phase 4 is in https://github.com/pk15pi/talentAquisition/pull/4 and was left unmerged. Phase 5 React screens and later phases were not started.
 
 **Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. For this phase, frontend integration means the existing screens still work against the API. No new React screens were added. The jobs list now calls the matcher instead of leaving "Find candidates" disabled. Modules that still have no screen stay incomplete.
 
