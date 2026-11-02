@@ -75,7 +75,7 @@ await page.getByRole("heading", { name: "Opportunities" }).waitFor();
 await page.getByLabel("Title").fill("Browser Deal");
 await page.getByLabel("Client").selectOption({ index: 1 });
 await page.getByRole("button", { name: "Save opportunity" }).click();
-await page.getByText("Browser Deal").waitFor();
+await page.getByRole("cell", { name: "Browser Deal" }).first().waitFor();
 await shot("completion-sales-opportunity");
 await page.goto(`${frontend}/billing`, { waitUntil: "networkidle" });
 await page.getByText("You do not have permission to view this page.").waitFor();

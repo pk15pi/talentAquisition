@@ -26,7 +26,7 @@ Stacked on `0c0c49f` (`cursor/phase-10-production-deploy-757a`). That commit's G
 
 ### Verified
 
-Re-run after the rebase is recorded in `FINAL_DELIVERY_REPORT.md`. The pre-rebase run on Phase 5 was 98 tests, OK, on PostgreSQL 16.15, plus Vitest 13 and the headless Chrome script.
+After rebasing onto `0c0c49f`: `python manage.py test apps` on PostgreSQL 16.15 was 105 tests, OK. `manage.py check` and `check --deploy --fail-level WARNING` reported no issues (2 silenced on the deploy check). `makemigrations --check --dry-run` reported no changes. `npm test` was 13 passed. `node frontend/scripts/verify-completion.mjs` exited 0.
 
 ## 2026-11-02 — Production packaging (Phase 10 and deploy checks)
 

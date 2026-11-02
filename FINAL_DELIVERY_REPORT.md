@@ -1,8 +1,8 @@
 # SynfoTalent delivery report
 
-Date: 2026-11-02. Branch: `cursor/completion-gaps-b414`. Base: `master` at `635cc4d` (Phase 5 merged). This report follows the gap register in `FINAL_AUDIT_BASELINE.md`, which was committed before the code changes.
+Date: 2026-11-02. Branch: `cursor/completion-gaps-b414`. History, bottom to top: `master` at `635cc4d` (Phase 5), production packaging `0c0c49f` (`cursor/phase-10-production-deploy-757a`), then the baseline audit and the completion commit. `0c0c49f` is an ancestor. It was not rewritten. Compare: https://github.com/pk15pi/talentAquisition/compare/master...cursor/completion-gaps-b414
 
-The production-prep agent (`bc-64130237-fd50-5ec8-a1d1-a677d6d1757a`) was already implementing Gunicorn, Nginx, non-root images, and secret/CORS/throttle hardening. This branch does not replace that work. It adds a Celery beat service to the development Compose file so retention has a process to run.
+This report follows `FINAL_AUDIT_BASELINE.md`, which was committed before the product fixes. The production-prep agent (`bc-64130237-fd50-5ec8-a1d1-a677d6d1757a`) could not open a PR. Its Gunicorn, Nginx, non-root images, `docker-compose.prod.yml`, secure settings, Redis password, and signed object-storage redirect are on this branch. A `beat` service was added to both Compose files so retention has a process. Nothing is merged.
 
 ## Completion
 
@@ -59,14 +59,14 @@ POSTGRES_PASSWORD=synfotalent_dev_password POSTGRES_HOST=localhost \
 .venv/bin/python manage.py test apps
 ```
 
-Result: **98 tests, OK**. The same command before the code changes, recorded in the baseline, was 82 tests, OK.
+Result after the rebase onto `0c0c49f`: **105 tests, OK**, 55.4s, PostgreSQL 16.15. The baseline on Phase 5 alone was 82 tests, OK. The completion commit before the rebase was 98 tests, OK. The extra tests are the packaging deploy checks plus the completion tests.
 
 ```bash
 DJANGO_DEBUG=0 DJANGO_SECRET_KEY=production-secret-not-dev-only-32chars-min \
 POSTGRES_HOST=localhost .venv/bin/python manage.py check
 ```
 
-Result: no issues.
+Result: no issues (0 silenced). `manage.py check --deploy --fail-level WARNING` with the same debug-off secret: no issues, 2 silenced (`security.W008`, `security.W021`), which the packaging commit documents as Nginx's HTTPS redirect and opt-in HSTS preload.
 
 ```bash
 .venv/bin/python manage.py makemigrations --check --dry-run
@@ -88,7 +88,7 @@ Browser, against `runserver` on port 8000 and Vite on port 5173, users `hrcomple
 CHROME_PATH=/usr/local/bin/google-chrome node frontend/scripts/verify-completion.mjs
 ```
 
-Result: **completion browser verification ok**.
+Result after the rebase, same script: **completion browser verification ok**.
 
 - HR dashboard has no Billing link, no Opportunities link, and no invoiced revenue. `/billing` and `/opportunities` show the permission message. The placement row for Browser Candidate does not show offered CTC.
 - HR cannot save a candidate until the consent box is checked. Withdraw consent then shows "Consent withdrawn. The profile was not deleted."
@@ -101,9 +101,9 @@ Not run in this pass: `docker compose up`, Celery beat as a live process, and Gu
 
 ## Production readiness
 
-Not ready for real candidate files or live invoices.
+The packaging commit on this branch is a real Gunicorn and Nginx path: non-root images, private `/media/`, Redis password in `docker-compose.prod.yml`, and optional signed object-storage redirects. That compose file was booted by the packaging agent (their changelog: five services healthy, then stopped). This completion pass did not boot Compose again. It did re-run the Django suite, the deploy check, Vitest, and the browser script on the stacked tree.
 
-Ready enough for a staff pilot only after the production-prep change supplies a non-root Gunicorn/Nginx path, a real secret, and HTTPS. Even then:
+Not ready for real candidate files or live invoices until this branch is reviewed. Even after that:
 
 - Job owner history is current-state only, so a JD transfer rewrites sales credit for that JD.
 - Merge authority is as wide as duplicate review.
