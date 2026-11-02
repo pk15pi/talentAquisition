@@ -5,6 +5,11 @@ from django.db import models
 
 
 class UserManager(DjangoUserManager):
+    def _create_user(self, username, email, password, **extra_fields):
+        user = super()._create_user(username, email, password, **extra_fields)
+        user.assign_default_role_group()
+        return user
+
     def create_superuser(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault("role", User.Role.ADMIN)
         return super().create_superuser(username, email, password, **extra_fields)
@@ -36,13 +41,15 @@ class User(AbstractUser):
         return self.get_full_name() or self.username
 
     def save(self, *args, **kwargs):
-        raw = kwargs.get("raw", False)
         super().save(*args, **kwargs)
-        if not raw:
-            self.sync_role_group()
 
-    def sync_role_group(self):
-        """Keep the role's default group, without removing any other groups."""
+    def assign_default_role_group(self):
+        """Add the group for this role. Never removes a membership.
+
+        Call this only when provisioning a user (``create_user``,
+        ``create_superuser``, the admin add form, or the user API create).
+        Ordinary saves and logins must not call it.
+        """
         from django.contrib.auth.models import Group
 
         from apps.access import ROLE_TO_GROUP
@@ -50,9 +57,10 @@ class User(AbstractUser):
         group_name = ROLE_TO_GROUP.get(self.role)
         if not group_name:
             return
-        role_group_names = list(ROLE_TO_GROUP.values())
-        existing = list(Group.objects.filter(name__in=role_group_names))
-        if not any(group.name == group_name for group in existing):
-            return
-        self.groups.remove(*existing)
-        self.groups.add(Group.objects.get(name=group_name))
+        group = Group.objects.filter(name=group_name).first()
+        if group is not None:
+            self.groups.add(group)
+
+    def sync_role_group(self):
+        """Backward-compatible name. Adds the role group and removes nothing."""
+        self.assign_default_role_group()

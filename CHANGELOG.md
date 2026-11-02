@@ -2,6 +2,30 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-02 — Phase 3 review-fix follow-up pull request
+
+PR #2 was already merged, so the review fixes were not in `master`. They are in https://github.com/pk15pi/talentAquisition/pull/3, which was left unmerged. The verification below is the 2026-11-02 run.
+
+## 2026-11-01 — Phase 3 review corrections
+
+### Fixed
+
+- `User.save()` and login no longer rewrite group membership. `create_user`, `create_superuser`, the admin add form, and the user API create call `assign_default_role_group()`, which only adds the role's group. Removed memberships stay removed after login, profile updates, role edits, and `bootstrap_groups`.
+- Invoice, line, payment, and credit-note admins enforce their own add/change/view permissions. A user with only `billing.view_invoice` cannot add or change lines, payments, or credit notes, and the standalone URLs return 403. Foreign keys and autocomplete are limited to related rows the user can view, so a billing user cannot attach a placement they cannot see, and placement labels do not include CTC, fees, or revenue.
+- Creating a candidate in the admin requires an explicit consent confirmation or a documented non-consent basis (`contract`, `legal_obligation`, or `legitimate_interest`). The admin does not invent a consent time. Consent confirmation stores the time of that confirmation and a `CandidateConsent` row. Another basis stores the written documentation and leaves `consent_recorded_at` empty. The API still requires `consent_acknowledged` and a matching privacy-notice version.
+- Client owner changes, job status changes, recruiter assignment and removal, application status changes, and interview reschedules are covered by tests that submit the Django admin form and check the history row's actor.
+
+### Migration
+
+`candidates.0003_consent_evidence_optional_timestamp` makes `Candidate.consent_recorded_at` nullable and tightens the withdrawal check so a withdrawal cannot be stored without a recorded consent. This is required so a documented non-consent basis can be stored without writing a false consent timestamp. Existing rows already have a timestamp, so the change does not rewrite them. No earlier migration files were edited.
+
+### Verified
+
+- `python manage.py test apps` on PostgreSQL 16, re-run 2026-11-02: 66 tests, OK, 0 failures. The extra test checks that placement CTC and revenue do not appear on an invoice form or its placement autocomplete for a user without `placements.view_placement_financials`.
+- `python manage.py check`: no issues.
+- `python manage.py makemigrations --check --dry-run`: no changes.
+- Sensitive-data coverage is in `backend/apps/accounts/tests/test_admin_review.py` (`SensitiveAdminLeakTests`) and `backend/apps/accounts/tests/test_admin_permissions.py` (`test_resume_and_compensation_fields_follow_their_permissions`, `test_hr_placement_is_view_only_and_hides_financial_fields`). Those tests were already on this branch; the invoice-widget case was added in this follow-up.
+
 ## 2026-11-01 — Phase 3 Django admin
 
 Admin only. No Phase 4 matcher work, no Phase 5 pages, no duplicate merge, and no retention deletion. No migration files were added or edited.

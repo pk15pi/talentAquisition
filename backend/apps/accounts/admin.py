@@ -57,6 +57,11 @@ class CustomUserAdmin(NoDeleteMixin, UserAdmin):
             readonly.extend(["is_superuser", "user_permissions"])
         return tuple(dict.fromkeys(readonly))
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change:
+            obj.assign_default_role_group()
+
 
 try:
     admin.site.unregister(Group)

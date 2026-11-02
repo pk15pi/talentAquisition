@@ -11,7 +11,9 @@ class UserSerializer(serializers.ModelSerializer):
         user=User(**validated_data)
         if password: user.set_password(password)
         else: user.set_unusable_password()
-        user.save(); return user
+        user.save()
+        user.assign_default_role_group()
+        return user
     def update(self,instance,validated_data):
         password=validated_data.pop("password",None)
         for key,value in validated_data.items(): setattr(instance,key,value)

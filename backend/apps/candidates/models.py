@@ -7,6 +7,9 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 
+NON_CONSENT_BASES = ("contract", "legal_obligation", "legitimate_interest")
+
+
 class Candidate(models.Model):
     class Source(models.TextChoices):
         LINKEDIN = "LINKEDIN", "LinkedIn"
@@ -31,7 +34,7 @@ class Candidate(models.Model):
     notice_period_days = models.PositiveIntegerField(null=True, blank=True)
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.OTHER)
     sourced_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sourced_candidates")
-    consent_recorded_at = models.DateTimeField()
+    consent_recorded_at = models.DateTimeField(null=True, blank=True)
     privacy_notice_version = models.CharField(max_length=64)
     consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -51,7 +54,8 @@ class Candidate(models.Model):
                 name="candidate_consent_version_present",
             ),
             models.CheckConstraint(
-                condition=Q(consent_withdrawn_at__isnull=True) | Q(consent_withdrawn_at__gte=F("consent_recorded_at")),
+                condition=Q(consent_withdrawn_at__isnull=True)
+                | (Q(consent_recorded_at__isnull=False) & Q(consent_withdrawn_at__gte=F("consent_recorded_at"))),
                 name="candidate_consent_withdrawal_after_grant",
             ),
         ]
@@ -61,9 +65,16 @@ class Candidate(models.Model):
         ]
 
     def save(self, *args, **kwargs):
-        if not self.consent_recorded_at or not (self.privacy_notice_version or "").strip():
-            raise ValidationError("Candidate consent and a privacy notice version are required before a profile can be stored.")
-        self.privacy_notice_version = self.privacy_notice_version.strip()
+        self.privacy_notice_version = (self.privacy_notice_version or "").strip()
+        if not self.privacy_notice_version:
+            raise ValidationError("A privacy notice version is required before a profile can be stored.")
+        documented_basis = getattr(self, "_documented_processing_basis", None)
+        if self.consent_recorded_at is None and documented_basis not in NON_CONSENT_BASES:
+            raise ValidationError(
+                "Candidate consent and a privacy notice version are required before a profile can be stored."
+            )
+        if self.consent_withdrawn_at and self.consent_recorded_at is None:
+            raise ValidationError("Consent cannot be withdrawn when none was recorded.")
         self.normalized_email = (self.email or "").strip().lower()
         self.normalized_phone = "".join(character for character in (self.phone or "") if character.isdigit())
         if not self.candidate_code:
@@ -97,6 +108,9 @@ class Resume(models.Model):
     is_primary = models.BooleanField(default=False)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.original_filename or f"Resume {self.pk}"
 
     class Meta:
         constraints = [

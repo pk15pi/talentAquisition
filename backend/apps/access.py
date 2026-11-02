@@ -1,8 +1,12 @@
 """Default groups and permission codenames.
 
 Groups are created once by ``bootstrap_groups``. Later edits an administrator
-makes in Django admin are left in place. Checks use ``user.has_perm``, which
-already grants active superusers every permission and denies inactive users.
+makes in Django admin are left in place, including which users belong to a
+group. A new user receives the group for their role only from an explicit
+provisioning call (``create_user``, ``create_superuser``, the admin add view,
+or the user API create). Saves and logins do not add or remove memberships.
+Checks use ``user.has_perm``, which already grants active superusers every
+permission and denies inactive users.
 """
 
 ROLE_TO_GROUP = {

@@ -23,6 +23,13 @@ class Placement(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OFFERED)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        application = self.application
+        code = application.application_code or ""
+        name = application.candidate.full_name if application.candidate_id else ""
+        label = " — ".join(part for part in (code, name) if part)
+        return label or f"Placement {self.pk}"
+
     class Meta:
         ordering = ["-created_at"]
         constraints = [
