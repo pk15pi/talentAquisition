@@ -1,3 +1,6 @@
+# Local development. The API process is runserver (command web-dev).
+# Production is docker-compose.prod.yml and does not use this file.
+# Redis is published without a password for a laptop broker. Do not publish it that way on a shared host.
 services:
   db:
     image: postgres:16-alpine
@@ -19,7 +22,7 @@ services:
   backend:
     build: ./backend
     entrypoint: ["sh", "/app/docker-entrypoint.sh"]
-    command: ["web"]
+    command: ["web-dev"]
     env_file: .env
     environment:
       POSTGRES_HOST: db

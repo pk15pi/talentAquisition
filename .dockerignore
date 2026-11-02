@@ -1,5 +1,9 @@
 **/__pycache__
 **/*.pyc
 **/node_modules
+**/.venv
+**/media
+**/staticfiles
+**/dist
 .env
 .git

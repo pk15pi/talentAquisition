@@ -1,8 +1,10 @@
 import hashlib
+import logging
 import os
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -22,6 +24,8 @@ from .serializers import (
     DuplicateReviewSerializer,
     ResumeSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CandidateViewSet(ModelViewSet):
@@ -178,11 +182,22 @@ class ResumeSignedDownloadView(APIView):
         resume = Resume.objects.filter(pk=resume_id).first()
         if resume is None or not resume.file:
             return Response({"detail": "Resume file was not found.", "code": "not_found", "errors": None}, status=404)
+        filename = os.path.basename(resume.original_filename or "resume").replace('"', "").replace("\r", "").replace("\n", "")
+        if settings.RESUME_OBJECT_STORAGE:
+            try:
+                signed = resume.file.storage.url(
+                    resume.file.name,
+                    expire=DOWNLOAD_MAX_AGE_SECONDS,
+                    parameters={"ResponseContentDisposition": f'attachment; filename="{filename}"'},
+                )
+            except Exception:
+                logger.exception("Could not sign resume %s", resume.pk)
+                return Response({"detail": "Resume file was not found.", "code": "not_found", "errors": None}, status=404)
+            return HttpResponseRedirect(signed)
         try:
             handle = resume.file.open("rb")
         except FileNotFoundError:
             return Response({"detail": "Resume file was not found.", "code": "not_found", "errors": None}, status=404)
-        filename = os.path.basename(resume.original_filename or "resume")
         return FileResponse(handle, as_attachment=True, filename=filename)
 
 

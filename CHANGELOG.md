@@ -2,9 +2,42 @@
 
 All notable changes to SynfoTalent are recorded here. The format is based on Keep a Changelog. This file did not exist before the Phase 0 audit; the starter snapshot is described so later entries have a baseline.
 
+## 2026-11-02 — Production packaging (Phase 10 and deploy checks)
+
+Separate pull request into `master`. Left unmerged so the final audit agent can rebase or stack on it. No duplicate merge, no retention deletion, no Phase 6 end-to-end suite, and no Phase 7 report filters. No migration. Resume `FileField` keys are unchanged.
+
+### Added
+
+- Gunicorn is the production API process (`web` in `docker-compose.prod.yml`). Development Compose still uses `runserver` via `web-dev`.
+- Nginx serves the built frontend, proxies `/api/` and `/admin/`, serves collected static files, and returns 404 for `/media/`. `deploy/nginx/tls.conf.example` is the TLS listener. The default file is HTTP so a host without certificates can boot.
+- Production images run as non-root. The production compose file does not bind-mount source, does not publish Postgres or Redis, and requires a Redis password. Container boot runs `migrate` and `bootstrap_groups` only. It never runs `makemigrations`.
+- Debug-off startup refuses a missing, short, repetitive, or `dev-only-` `DJANGO_SECRET_KEY`. Secure cookies, HSTS, and `X-Forwarded-Proto` are set for a reverse proxy. CORS comes from the environment and is empty when debug is off and the variable is unset.
+- Login throttles on JWT obtain, JWT refresh, and `POST /admin/login/`. API anon and user throttles. Health is not throttled. Production Compose stores the counters in Redis.
+- Optional private S3-compatible storage via `AWS_STORAGE_BUCKET_NAME`. The authorized download view redirects to a short-lived signed URL. Local files still stream through that same view.
+
+### Changed
+
+- README is the deploy runbook: env vars, migrate, `bootstrap_groups`, `createsuperuser`, TLS, backups, and the checks below. It no longer says the download URL is missing or that matching still crashes.
+- `manage.py check --deploy --fail-level WARNING` is in CI. `security.W008` and `security.W021` are silenced and documented. HTTPS redirect is Nginx's job. HSTS preload is opt-in.
+
+### Verified
+
+- `python manage.py test apps` on PostgreSQL 16.15: 89 tests, OK.
+- `python manage.py check` with debug off: no issues.
+- `python manage.py check --deploy --fail-level WARNING`: no issues, 2 silenced (`security.W008`, `security.W021`).
+- `python manage.py makemigrations --check --dry-run`: no changes.
+- `npm test`: 13 passed. `npm run build`: exit 0.
+- `docker compose -f docker-compose.prod.yml up --build -d` on this host: db, redis, backend, worker, and web became healthy. Backend and worker ran as uid 1000. Nginx ran as uid 101. The API process was `gunicorn config.wsgi:application`. Host port 8000 was closed. `GET /api/v1/health/` returned 200 `{"status":"ok","version":"v1"}`. `GET /` returned the built SPA, which calls `/api/v1`. `GET /admin/login/` and `/static/admin/css/base.css` returned 200. `GET /media/resumes/secret.pdf` returned 404. `POST /api/v1/auth/token/` through Nginx returned access and refresh tokens. The stack was stopped after that check.
+
+### Not done
+
+- Duplicate profile merge and the retention deletion job.
+- Phase 6 UI end-to-end suite, Phase 7 report filters, and a full Phase 8 expansion.
+- Audit rows for resume downloads and billing reads. Malware scanning. Password reset and token blacklist.
+
 ## 2026-11-02 — Phase 5 frontend pages
 
-Separate pull request into `master`. Left unmerged. No Phase 6 work. No migration. PR #4 is already merged.
+Merged to `master` as pull request #5. No Phase 6 work. No migration. PR #4 was already merged.
 
 ### Added
 

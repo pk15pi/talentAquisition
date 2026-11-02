@@ -1,13 +1,7 @@
 #!/bin/sh
 set -eu
 
-if [ "${1:-web}" = "web" ]; then
-  python manage.py migrate --noinput
-  python manage.py bootstrap_groups
-  exec python manage.py runserver 0.0.0.0:8000
-fi
-
-if [ "$1" = "worker" ]; then
+wait_for_migrations() {
   i=0
   until python manage.py migrate --check >/dev/null 2>&1; do
     i=$((i + 1))
@@ -17,7 +11,27 @@ if [ "$1" = "worker" ]; then
     fi
     sleep 1
   done
-  exec celery -A config worker -l info
-fi
+}
 
-exec "$@"
+case "${1:-web}" in
+  web)
+    python manage.py migrate --noinput
+    python manage.py bootstrap_groups
+    python manage.py collectstatic --noinput
+    # Nginx runs as a different user and only mounts this tree, not /app/media.
+    chmod -R a+rX /app/staticfiles
+    exec gunicorn config.wsgi:application --config gunicorn.conf.py
+    ;;
+  web-dev)
+    python manage.py migrate --noinput
+    python manage.py bootstrap_groups
+    exec python manage.py runserver 0.0.0.0:8000
+    ;;
+  worker)
+    wait_for_migrations
+    exec celery -A config worker -l info
+    ;;
+  *)
+    exec "$@"
+    ;;
+esac

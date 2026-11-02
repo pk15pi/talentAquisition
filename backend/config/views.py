@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 class HealthView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = []
 
     def get(self, request, **kwargs):
         try:

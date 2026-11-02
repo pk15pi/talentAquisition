@@ -1,0 +1,120 @@
+# Production stack. Use this file on its own. Do not merge it with docker-compose.yml.
+#
+#   docker compose -f docker-compose.prod.yml up --build -d
+#
+# No source bind mount and no migration generation. Gunicorn is the API.
+# Nginx serves the built SPA and proxies /api/ and /admin/. /media/ is not mounted
+# on Nginx. Postgres and Redis are not published on the host. Redis requires a password.
+# Compose network isolation is not a substitute for that password on a shared Docker host.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-synfotalent}
+      POSTGRES_USER: ${POSTGRES_USER:-synfotalent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-synfotalent} -d ${POSTGRES_DB:-synfotalent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    image: synfotalent-backend:prod
+    command: ["web"]
+    env_file: .env
+    environment: &app-env
+      DJANGO_DEBUG: "0"
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-synfotalent}
+      POSTGRES_USER: ${POSTGRES_USER:-synfotalent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_CONN_MAX_AGE: "60"
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CACHE_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    image: synfotalent-backend:prod
+    command: ["worker"]
+    env_file: .env
+    environment: *app-env
+    volumes:
+      - media_data:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --timeout 5 | grep -q OK"]
+      interval: 20s
+      timeout: 15s
+      retries: 5
+      start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+    ports:
+      - "${WEB_HTTP_PORT:-8080}:8080"
+    volumes:
+      - static_data:/var/www/static:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_data:
+  static_data:

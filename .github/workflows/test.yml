@@ -38,7 +38,10 @@ jobs:
           POSTGRES_PASSWORD: synfotalent_dev_password
           POSTGRES_HOST: localhost
           POSTGRES_PORT: "5432"
-        run: python manage.py test apps
+        run: |
+          python manage.py test apps
+          python manage.py check --deploy --fail-level WARNING
+          python manage.py makemigrations --check --dry-run
 
   frontend:
     runs-on: ubuntu-latest

@@ -1,10 +1,54 @@
 # SynfoTalent development status
 
-Updated for the Phase 5 frontend pull request, 2026-11-02. PR #4 is merged on `master`. Phase 5 is a separate pull request into `master` and was left unmerged. Phase 6 and later were not started.
+Updated for the production-packaging pull request, 2026-11-02. Phases 0–5 are on `master` (Phase 5 merged as PR #5). This Phase 10 pull request is **not merged**. The final audit agent (`bc-c1e1b1b8-e2eb-58d3-ada9-2f6b07a7b414`) should rebase or stack on it. Do not merge it from that work without a review. GitHub's default branch is `master`. `main` matched `master` at `635cc4d` when this branch was cut.
 
-**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Phase 5 wires the React workspace to the Phase 4 APIs. React checks hide controls; the API remains the authorization. Modules that still lack a workflow, a retention job, or a browser pass stay incomplete.
+**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. This pull request packages the process. It does not close the product gaps below.
+
+## Still not production-complete (product)
+
+Left out of this pull request on purpose:
+
+- Phase 6 end-to-end UI workflows. Vitest and the Phase 5 Chrome script are the UI checks that exist.
+- Phase 7 report filters and productivity definitions. Reports are still all-time counts.
+- A full Phase 8 expansion. The Django suite and Vitest were extended only with deploy checks.
+- Duplicate profile merge. Approval records a decision and does not merge or delete profiles.
+- Retention deletion. Days can be stored and are not enforced.
+- Consent is never invented. A documented non-consent basis still has to be recorded by a person.
+- HR still has no placement financial permissions, no invoice permissions, and no `candidates.view_resume_content` by default.
+- Download and billing reads are still not written to `AuditLog`. Resumes are not malware-scanned.
+- No password reset and no refresh-token blacklist. JWTs stay in `localStorage`.
+- Sales opportunity screens, department editing, and consent withdrawal are still absent.
+- Admin invoice header totals can still be typed apart from the lines until the next line save.
+
+`manage.py check --deploy` silences `security.W008` (HTTPS redirect is Nginx or the load balancer, so container health checks stay on HTTP) and `security.W021` (HSTS preload is opt-in via `DJANGO_HSTS_PRELOAD=1`).
+
+## Phase 10 — production packaging
+
+Gunicorn serves the API in `docker-compose.prod.yml`. Development Compose still uses `runserver` (`web-dev`) so a laptop can reload code. Nginx serves the built SPA, proxies `/api/` and `/admin/`, serves `collectstatic` output, and returns 404 for `/media/`. The media volume is not mounted on Nginx. Images run as non-root. Production Compose does not bind-mount source and does not run `makemigrations`. Redis in that file requires a password and is not published. Postgres is not published.
+
+Debug defaults to off. A debug-off process refuses a missing, short, repetitive, or `dev-only-` secret. Secure cookies and HSTS are on when debug is off. CORS is an allowlist from the environment. Login and API throttles use Redis when `CACHE_URL` is set (production Compose sets it) and a per-process cache otherwise.
+
+Resume storage stays on the local `FileField` path `resumes/%Y/%m/`. Setting `AWS_STORAGE_BUCKET_NAME` switches the backend to a private S3-compatible bucket and the download view redirects to a short-lived signed URL after the same permission check. No migration.
+
+**Tests that ran (production packaging, 2026-11-02)**
+
+| Command | Result |
+| --- | --- |
+| `python manage.py test apps` against PostgreSQL 16.15 | 89 tests, OK, 0 failures |
+| `python manage.py check` with `DJANGO_DEBUG=0` and a non-dev secret | No issues (0 silenced) |
+| `python manage.py check --deploy --fail-level WARNING` | No issues (2 silenced: `security.W008`, `security.W021`) |
+| `python manage.py makemigrations --check --dry-run` | No changes detected |
+| `npm test` | 13 passed |
+| `npm run build` | Exit 0 |
+| `docker compose -f docker-compose.prod.yml up --build -d` | All five services healthy. Gunicorn on the API. Nginx uid 101. Backend and worker uid 1000. `/api/v1/health/` 200. SPA 200 with `/api/v1`. Admin CSS 200. `/media/resumes/secret.pdf` 404. Token obtain through Nginx 200. Host port 8000 closed. Stack stopped after the check. |
+
+The older module sections below are the phase notes that were true when they were written. Where they disagree with this section, this section is the later one.
 
 ## Phase 5 — frontend pages
+
+Phase 5 is merged on `master`. The notes below are the record of that pull request. Phase 6 was not started there.
+
+**Completion rule:** a product feature is complete only when backend behavior, frontend integration, and tests have all been verified. Phase 5 wires the React workspace to the Phase 4 APIs. React checks hide controls; the API remains the authorization. Modules that still lack a workflow, a retention job, or a browser pass stay incomplete.
 
 Tailwind 4 is installed and used for the shell and pages. The JWT refresh interceptor is unchanged. `GET /api/v1/users/me/` now also returns `permissions` and `is_superuser` so the shell can hide controls. That list is not authorization. Active superusers still pass `has_perm` even when a codename is missing from an ordinary user's list; Django 5.2 already puts every codename on an active superuser's `get_all_permissions()`, and the flag is returned as well. User rows gained `can_own_client` and `can_be_assigned_recruiter` so owner and recruiter dropdowns only offer people the API would accept. Child lists accept an optional parent id (`client`, `job`, `candidate`, `application`) and duplicate reviews accept `status`. Display names were added for clients, jobs, placements, interviews, submissions, invoices, payments, and credit notes. No migration. No matcher rewrite, no duplicate merge, no retention deletion.
 
@@ -123,15 +167,15 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 ## 1. Platform, configuration, and local runtime
 
 - **Module name:** Platform / configuration / Docker
-- **Current implementation status:** Foundation is in place and verified on the host against PostgreSQL. Compose was updated and not booted here.
-- **Completed features:** None under the full product rule. Verified foundation: committed migrations, container command runs `migrate` and `bootstrap_groups` only, `.env.example` uses `POSTGRES_HOST=localhost` while Compose overrides the database host and Redis URLs, debug-off refuses a missing or `dev-only-` secret, `/media/` is not mounted, `/api/v1/` is versioned, errors use one JSON shape, `/api/v1/health/` checks the database.
-- **Pending features:** Gunicorn, Nginx, non-root images, a proven `docker compose up`, S3 storage, signed downloads.
-- **Known bugs:** Worker and backend images still run as root and the API process is still `runserver`. Redis is still published without a password.
-- **Tests executed:** `manage.py check`, `makemigrations --check`, `migrate`, `test apps` (health, version, media 404, error shape).
-- **Tests passed:** Those commands. 30/30 in the suite.
-- **Tests failed:** None.
-- **Security issues:** Dev secret is intentionally refused when debug is off. Production HTTPS settings are still unset. Media is private only because it is not served; there is no authorized download yet.
-- **Next development tasks:** Phase 4 download endpoint, then Phase 10 process model. Do not put `makemigrations` back in the container command.
+- **Current implementation status:** Partial as a product. The Phase 10 section at the top is the deploy path: Gunicorn, Nginx, non-root images, production Compose, and optional private object storage. Development Compose still runs `runserver` and still publishes Redis without a password.
+- **Completed features:** None under the full product rule. The process model in the Phase 10 section is implemented and covered by `apps/accounts/tests/test_deploy_settings.py`.
+- **Pending features:** A proved restore drill on the operator's own host. Malware scanning. Download audit rows.
+- **Known bugs:** Development Redis is still published without a password. That is the laptop broker, not the production file.
+- **Tests executed:** See the Phase 10 test table once this pull request's commands have been recorded.
+- **Tests passed:** See that table.
+- **Tests failed:** None in the commands recorded there.
+- **Security issues:** Dev secret is refused when debug is off, including short and repetitive keys. `SECURE_SSL_REDIRECT` stays off on purpose. Media is private because Nginx returns 404 and Django does not route `/media/`.
+- **Next development tasks:** Do not put `makemigrations` back in the container command. Do not publish the production Redis port.
 
 ## 2. Accounts and authentication
 
@@ -143,7 +187,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Tests executed:** Inactive token 401, refresh 200, `createsuperuser` role `ADMIN`, superuser with role HR can create a client and list invoices, `GET /users/me/`, bootstrap does not restore a removed HR permission.
 - **Tests passed:** All of the above, inside the 30-test run.
 - **Tests failed:** None.
-- **Security issues:** No login throttle. Tokens stay in `localStorage`. Inactive users cannot obtain a token (tested).
+- **Security issues:** JWT obtain, JWT refresh, and `POST /admin/login/` are throttled. Tokens stay in `localStorage`. There is no refresh blacklist. Inactive users cannot obtain a token (tested).
 - **Next development tasks:** Phase 5 user screen. Phase 9 throttle and cookie/session review.
 
 ## 3. Organizations
@@ -208,7 +252,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Tests executed:** The consent and duplicate tests above, plus `test_resume_privacy`: sales 403, HR payload has no resume content or CTC, management sees CTC but not resume content, upload response has no storage path or parsed text, `/media/` 404, staff HR admin HTML omits `parsed_text`, file hash, file input, and CTC. Browser script saved `SW-CAN-00001` only after the consent box was checked.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
-- **Security issues:** Files sit on disk with no public URL and no authorized URL. Anyone with `review_duplicate` (every default role group) may approve a review. That matches the owner's rule. The decision does not merge data.
+- **Security issues:** Files are not served from `/media/`. The authorized download view is the only read path, and object storage adds a short-lived signed redirect after that check. Anyone with `review_duplicate` (every default role group) may approve a review. That matches the owner's rule. The decision does not merge data. HR and Management still lack `view_resume_content` by default.
 - **Next development tasks:** Phase 4 review API and download. Phase 5 review screen. The form checkbox was not clicked in a browser in this run.
 
 ## 8. Skills and matching
@@ -313,7 +357,7 @@ The 40 tests cover health and API versioning, the error envelope, inactive login
 - **Tests executed:** See candidates and system configuration.
 - **Tests passed:** Yes.
 - **Tests failed:** None.
-- **Security issues:** Resume reads cannot be audited until a download endpoint exists.
+- **Security issues:** The download endpoint exists and resume reads are still not written to `AuditLog`. Billing reads are not audited either.
 - **Next development tasks:** Phase 9.
 
 ## 16. Frontend shell

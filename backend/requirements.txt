@@ -8,3 +8,6 @@ Pillow>=11,<12
 celery[redis]>=5.4,<6
 pypdf>=5,<6
 python-docx>=1.1,<2
+gunicorn>=23,<24
+django-storages>=1.14,<2
+boto3>=1.35,<2
